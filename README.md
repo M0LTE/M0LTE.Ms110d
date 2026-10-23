@@ -1,6 +1,6 @@
 # M0LTE.Ms110d
 
-A managed **MIL-STD-188-110D Appendix D** 3 kHz serial-tone HF modem for .NET, extracted from the [pdn-soundmodem](https://github.com/packet-net/pdn-soundmodem) packet-radio modem. Give it bits and it gives you 9600 Hz audio on an 1800 Hz sub-carrier; give it audio and it gives you the bits back.
+A managed **MIL-STD-188-110D Appendix D** 3 kHz serial-tone HF modem for .NET, extracted from the [pdn-soundmodem](https://github.com/packet-net/pdn-soundmodem) packet-radio modem. Appendix D's NATO counterpart is STANAG 5069; this package implements most of its 3 kHz waveforms (WN0 to WN8 and WN13; not WN9 to WN12 or the wider bandwidths). It is not the older 3 kHz waveform of Appendix C and STANAG 4539. See [Related standards](docs/waveforms.md#related-standards). Give it bits and it gives you 9600 Hz audio on an 1800 Hz sub-carrier; give it audio and it gives you the bits back.
 
 | Type | What it is |
 | --- | --- |
