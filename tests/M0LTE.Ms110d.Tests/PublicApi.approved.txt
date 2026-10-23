@@ -1,0 +1,276 @@
+namespace M0LTE.Ms110d
+{
+    public sealed class Dfe
+    {
+        public Dfe(int ffTaps, int fbTaps) { }
+        public int FbTaps { get; }
+        public float FfEnergy { get; }
+        public int FfTaps { get; }
+        public void AddTrainingRow(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past, M0LTE.Ofdm.Cf desired, float weight = 1) { }
+        public void AddTrainingRow(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past, System.ReadOnlySpan<float> pastVariance, M0LTE.Ofdm.Cf desired, float weight = 1) { }
+        public void BeginRls(float lambda, float pInit = 1) { }
+        public void BeginTraining() { }
+        public M0LTE.Ofdm.Cf Equalize(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past) { }
+        public void LoadInterpolatedTaps(System.ReadOnlySpan<M0LTE.Ofdm.Cf> a, System.ReadOnlySpan<M0LTE.Ofdm.Cf> b, float alpha) { }
+        public void LoadTaps(System.ReadOnlySpan<M0LTE.Ofdm.Cf> taps) { }
+        public M0LTE.Ofdm.Cf Nlms(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past, M0LTE.Ofdm.Cf desired, float mu) { }
+        public void RestoreTraining() { }
+        public M0LTE.Ofdm.Cf RlsUpdate(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past, M0LTE.Ofdm.Cf desired, float weight = 1) { }
+        public void RotateTaps(M0LTE.Ofdm.Cf rotor) { }
+        public void SeedRlsFromTraining(float regularization, float pFallback = 1, float ffNoisePower = 0) { }
+        public M0LTE.Ofdm.Cf[] SnapshotTaps() { }
+        public void SnapshotTraining() { }
+        public bool SolveTraining(float regularization = 0.001, bool anchorToCurrentTaps = false, float ffNoisePower = 0) { }
+        public M0LTE.Ms110d.Dfe.TirSolve SolveTrainingTir(float regularization, float ffNoisePower, int maxLag, bool allowPair = true, int onlyLag = 0) { }
+        public void SymmetrizeP(float pMax = 10) { }
+        public void TranslateTaps(System.ReadOnlySpan<M0LTE.Ofdm.Cf> from, System.ReadOnlySpan<M0LTE.Ofdm.Cf> to) { }
+        public readonly struct TirSolve : System.IEquatable<M0LTE.Ms110d.Dfe.TirSolve>
+        {
+            public TirSolve(bool Solved, int Lag, M0LTE.Ofdm.Cf Coefficient, int Lag2, M0LTE.Ofdm.Cf Coefficient2, float SseNull, float SseTir) { }
+            public M0LTE.Ofdm.Cf Coefficient { get; init; }
+            public M0LTE.Ofdm.Cf Coefficient2 { get; init; }
+            public int Lag { get; init; }
+            public int Lag2 { get; init; }
+            public bool Solved { get; init; }
+            public float SseNull { get; init; }
+            public float SseTir { get; init; }
+        }
+    }
+    public static class MiniProbe
+    {
+        public static M0LTE.Ofdm.Cf[] Get(int k, bool boundary) { }
+    }
+    public sealed class Ms110dBurst : System.IEquatable<M0LTE.Ms110d.Ms110dBurst>
+    {
+        public Ms110dBurst(byte[] PayloadBits, M0LTE.Ms110d.Ms110dBurstEndReason Reason, int Blocks, M0LTE.Ms110d.Ms110dLockInfo? Lock = null) { }
+        public int Blocks { get; init; }
+        public M0LTE.Ms110d.Ms110dLockInfo? Lock { get; init; }
+        public byte[] PayloadBits { get; init; }
+        public M0LTE.Ms110d.Ms110dBurstEndReason Reason { get; init; }
+    }
+    public enum Ms110dBurstEndReason
+    {
+        Eom = 0,
+        MaxInputDataBlocks = 1,
+        Terminated = 2,
+        SignalLost = 3,
+        SignalAbsent = 4,
+    }
+    public sealed class Ms110dDemodOptions : System.IEquatable<M0LTE.Ms110d.Ms110dDemodOptions>
+    {
+        public Ms110dDemodOptions() { }
+        public bool DisableTurbo { get; init; }
+        public int MaxInputDataBlocks { get; init; }
+        public bool PresenceReleaseOff { get; init; }
+        public float? RlsForgettingFactor { get; init; }
+        public double RollOff { get; init; }
+        public double SyncThreshold { get; init; }
+        public float? TrackRidge { get; init; }
+        public string? TurboNsegMode { get; init; }
+    }
+    public sealed class Ms110dDemodulator
+    {
+        public System.Func<int, byte[]?>? OracleInfo;
+        public const double PresenceWindowSeconds = 16D;
+        public Ms110dDemodulator(M0LTE.Ms110d.Ms110dDemodOptions? options = null) { }
+        public int AgcResolves { get; }
+        public bool CarrierDetect { get; }
+        public int CollapseResolves { get; }
+        public M0LTE.Ms110d.Ms110dLockInfo? Lock { get; }
+        public int MfbOffered { get; }
+        public int MfbSelected { get; }
+        public double PeakSearchMetric { get; }
+        public int SignalAbsentReleases { get; }
+        public M0LTE.Ms110d.Ms110dRxState State { get; }
+        public int TurboAborted { get; }
+        public int TurboConverged { get; }
+        public int TurboReverted { get; }
+        public int TurboSalvaged { get; }
+        public int TurboSkipped { get; }
+        public event System.Action<M0LTE.Ms110d.Ms110dRxBlock>? BlockDecoded;
+        public event System.Action<M0LTE.Ms110d.Ms110dBurst>? BurstCompleted;
+        public event System.Action<M0LTE.Ofdm.Cf>? DataSymbolEqualized;
+        public event System.Action<int, float[]>? FirstPassBlockLlrs;
+        public event System.Action<string>? FrameDiagnostics;
+        public event System.Action<int, float[], byte[]>? OracleBlockLlrs;
+        public event System.Action<long, double, double>? PresenceTraced;
+        public event System.Action<int, float[]>? TurboBlockLlrs;
+        public void Process(System.ReadOnlySpan<float> samples) { }
+        public void Reset() { }
+        public void Terminate() { }
+        public void WriteGenie(System.ReadOnlySpan<float> samples) { }
+    }
+    public static class Ms110dFraming
+    {
+        public static byte[] BuildTxBits(System.ReadOnlySpan<byte> payloadBits, bool appendEom, int inputBits) { }
+        public static byte[] EncodeBlock(M0LTE.Fec.ConvolutionalCode code, M0LTE.Ms110d.Fec.PunctureSpec puncture, M0LTE.Ms110d.Fec.Ms110dInterleaver interleaver, System.ReadOnlySpan<byte> info) { }
+    }
+    public enum Ms110dInterleaverKind
+    {
+        UltraShort = 0,
+        Short = 1,
+        Medium = 2,
+        Long = 3,
+    }
+    public sealed class Ms110dInterleaverParams : System.IEquatable<M0LTE.Ms110d.Ms110dInterleaverParams>
+    {
+        public Ms110dInterleaverParams(int Frames, int SizeBits, int InputBits, int Increment) { }
+        public int Frames { get; init; }
+        public int Increment { get; init; }
+        public int InputBits { get; init; }
+        public int SizeBits { get; init; }
+        public static M0LTE.Ms110d.Ms110dInterleaverParams Get3k(int wn, M0LTE.Ms110d.Ms110dInterleaverKind kind) { }
+        public static bool Has3k(int wn, M0LTE.Ms110d.Ms110dInterleaverKind kind) { }
+    }
+    public sealed class Ms110dLockInfo : System.IEquatable<M0LTE.Ms110d.Ms110dLockInfo>
+    {
+        public Ms110dLockInfo(int WaveformNumber, M0LTE.Ms110d.Ms110dInterleaverKind Interleaver, int ConstraintLength, double CfoHz) { }
+        public double CfoHz { get; init; }
+        public int ConstraintLength { get; init; }
+        public M0LTE.Ms110d.Ms110dInterleaverKind Interleaver { get; init; }
+        public int WaveformNumber { get; init; }
+    }
+    public sealed class Ms110dMode : System.IEquatable<M0LTE.Ms110d.Ms110dMode>
+    {
+        public Ms110dMode(int Wn, M0LTE.Ms110d.Ms110dModulation Modulation, int BitsPerSymbol, int U, int K, string CodeRate, int Bps) { }
+        public int BitsPerSymbol { get; init; }
+        public int Bps { get; init; }
+        public string CodeRate { get; init; }
+        public int K { get; init; }
+        public M0LTE.Ms110d.Ms110dModulation Modulation { get; init; }
+        public int U { get; init; }
+        public int Wn { get; init; }
+        public static M0LTE.Ms110d.Ms110dMode Mode3k(int wn) { }
+    }
+    public enum Ms110dModulation
+    {
+        Walsh = 0,
+        Bpsk = 1,
+        Qpsk = 2,
+        Psk8 = 3,
+        Qam16 = 4,
+    }
+    public sealed class Ms110dModulator
+    {
+        public const double MinRollOff = 0.05D;
+        public const int NativeRate = 9600;
+        public const double RollOff = 0.35D;
+        public Ms110dModulator(M0LTE.Ms110d.Ms110dTxSettings settings) { }
+        public M0LTE.Ms110d.Ms110dMode Mode { get; }
+        public double BurstSeconds(int payloadBitCount) { }
+        public float[] Modulate(System.ReadOnlySpan<byte> payloadBits) { }
+        public static int PulseSpanSymbols(double rollOff) { }
+    }
+    public sealed class Ms110dRxBlock : System.IEquatable<M0LTE.Ms110d.Ms110dRxBlock>
+    {
+        public Ms110dRxBlock(int Index, byte[] Bits) { }
+        public byte[] Bits { get; init; }
+        public int Index { get; init; }
+    }
+    public enum Ms110dRxState
+    {
+        Searching = 0,
+        ReadingPreamble = 1,
+        Tracking = 2,
+    }
+    public sealed class Ms110dScrambler
+    {
+        public Ms110dScrambler() { }
+        public int NextPsk(int transcoded) { }
+        public int NextQam(int symbol, int bits) { }
+        public void Reset() { }
+    }
+    public static class Ms110dTables
+    {
+        public const uint Eom = 1264952754u;
+        public const int PreambleChipsPerSymbol = 32;
+        public const int SubCarrierHz = 1800;
+        public const int SymbolRate = 2400;
+        public static readonly M0LTE.Ofdm.Cf[] Base13;
+        public static readonly M0LTE.Ofdm.Cf[] Base16;
+        public static readonly M0LTE.Ofdm.Cf[] Base19;
+        public static readonly M0LTE.Ofdm.Cf[] Base25;
+        public static readonly M0LTE.Ofdm.Cf[] Psk8;
+        public static readonly M0LTE.Ofdm.Cf[] Qam16;
+        public static readonly byte[][] Walsh;
+        public static System.ReadOnlySpan<byte> CntPn { get; }
+        public static System.ReadOnlySpan<byte> FixedDibits { get; }
+        public static System.ReadOnlySpan<byte> FixedPn { get; }
+        public static System.ReadOnlySpan<byte> Transcode8Psk { get; }
+        public static System.ReadOnlySpan<byte> WidPn { get; }
+    }
+    public sealed class Ms110dTxSettings : System.IEquatable<M0LTE.Ms110d.Ms110dTxSettings>
+    {
+        public Ms110dTxSettings() { }
+        public float Amplitude { get; init; }
+        public bool AppendEom { get; init; }
+        public bool AppendEot { get; init; }
+        public int ConstraintLength { get; init; }
+        public M0LTE.Ms110d.Ms110dInterleaverKind Interleaver { get; init; }
+        public int PreambleSuperframes { get; init; }
+        public double RollOff { get; init; }
+        public int TlcBlocks { get; init; }
+        public int WaveformNumber { get; init; }
+    }
+    public sealed class PreambleGenerator
+    {
+        public PreambleGenerator(int tlcBlocks, int superframes) { }
+        public int FixedSymbolCount { get; }
+        public int SuperframeChips { get; }
+        public byte[] FixedSectionChips() { }
+        public byte[] Generate(int wn, M0LTE.Ms110d.Ms110dInterleaverKind interleaver, int constraintLength) { }
+        public static byte[] CountSectionChips(int count) { }
+        public static byte[] WidSectionChips(int wn, M0LTE.Ms110d.Ms110dInterleaverKind interleaver, int constraintLength) { }
+    }
+    public sealed class Trinomial159Scrambler
+    {
+        public Trinomial159Scrambler() { }
+        public int Next() { }
+        public void Reset() { }
+    }
+    public sealed class Wid0WalshModem
+    {
+        public const int ChipsPerSymbol = 32;
+        public const int Fingers = 13;
+        public const int NegFingers = 6;
+        public const int RakeChips = 44;
+        public Wid0WalshModem() { }
+        public void CopyGainMagnitudes(System.Span<float> mags) { }
+        public void Demodulate(System.ReadOnlySpan<M0LTE.Ofdm.Cf> chips, System.Span<float> llrs, out int bestDibit, out M0LTE.Ofdm.Cf bestCorrelation) { }
+        public void DemodulateRake(System.ReadOnlySpan<M0LTE.Ofdm.Cf> chips, System.Span<float> llrs, out int bestDibit, out M0LTE.Ofdm.Cf combined, out double maxFingerAbs) { }
+        public void DemodulateRakeOracle(System.ReadOnlySpan<M0LTE.Ofdm.Cf> chips, System.ReadOnlySpan<M0LTE.Ofdm.Cf> cleanChips, int trueDibit, bool pole, System.Span<float> llrs, out int bestDibit, out M0LTE.Ofdm.Cf combined, out double maxFingerAbs) { }
+        public void Modulate(System.ReadOnlySpan<byte> fetchedBits, System.Span<byte> psk8Chips) { }
+        public void Reset() { }
+    }
+}
+namespace M0LTE.Ms110d.Fec
+{
+    public sealed class Ms110dInterleaver
+    {
+        public Ms110dInterleaver(int sizeBits, int increment) { }
+        public int SizeBits { get; }
+        public void Deinterleave(System.ReadOnlySpan<float> rxLlrs, System.Span<float> llrs) { }
+        public void Interleave(System.ReadOnlySpan<byte> punctured, System.Span<byte> fetched) { }
+        public void Interleave(System.ReadOnlySpan<float> punctured, System.Span<float> fetched) { }
+    }
+    public static class Ms110dPuncture
+    {
+        public static int Apply(M0LTE.Ms110d.Fec.PunctureSpec spec, System.ReadOnlySpan<byte> coded, System.Span<byte> punctured) { }
+        public static int Apply(M0LTE.Ms110d.Fec.PunctureSpec spec, System.ReadOnlySpan<float> mother, System.Span<float> punctured) { }
+        public static void Depuncture(M0LTE.Ms110d.Fec.PunctureSpec spec, System.ReadOnlySpan<float> rxLlrs, System.Span<float> motherLlrs) { }
+        public static M0LTE.Ms110d.Fec.PunctureSpec Get(M0LTE.Fec.ConvolutionalCode code, string rate) { }
+    }
+    public sealed class PunctureSpec : System.IEquatable<M0LTE.Ms110d.Fec.PunctureSpec>
+    {
+        public PunctureSpec(byte[] KeepT1, byte[] KeepT2, int RepeatFactor) { }
+        public byte[] KeepT1 { get; init; }
+        public byte[] KeepT2 { get; init; }
+        public int RepeatFactor { get; init; }
+        public int OutputLength(int infoBits) { }
+    }
+    public sealed class TailBitingSisoDecoder
+    {
+        public TailBitingSisoDecoder(M0LTE.Fec.ConvolutionalCode code) { }
+        public void Decode(System.ReadOnlySpan<float> motherLlrs, System.Span<float> motherPosteriors) { }
+    }
+}

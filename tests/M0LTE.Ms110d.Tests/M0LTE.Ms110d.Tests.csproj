@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The HF channel the performance masks are measured through. -->
+    <PackageReference Include="M0LTE.HfChannel" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/M0LTE.Ms110d/M0LTE.Ms110d.csproj" />
+  </ItemGroup>
+
+</Project>

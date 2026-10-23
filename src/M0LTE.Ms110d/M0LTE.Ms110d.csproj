@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>M0LTE.Ms110d</PackageId>
+    <Title>M0LTE.Ms110d</Title>
+    <Description>A managed MIL-STD-188-110D Appendix D 3 kHz serial-tone HF modem for .NET: waveforms WN0 to WN8 and WN13 (Walsh, BPSK, QPSK, 8PSK, 16QAM), the autobaud preamble with waveform identification, mini-probe framing, the scrambler, the K7 and K9 convolutional codes with Table D-L puncturing and tail-biting soft decoding, the short and long block interleavers, and a probe-trained decision-feedback equaliser with iterative BCJR turbo equalisation. Bits in, 9600 Hz audio out on an 1800 Hz sub-carrier, and back. Implemented spec-first and validated against the standard's own performance masks in simulation. Extracted from the pdn-soundmodem packet-radio modem.</Description>
+    <PackageTags>mil-std-188-110d;stanag;hf;serial-tone;psk;qam;modem;equaliser;amateur-radio;ham-radio</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="M0LTE.Dsp" />
+    <PackageReference Include="M0LTE.Fec" />
+    <PackageReference Include="M0LTE.Ofdm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="M0LTE.Ms110d.Tests" />
+  </ItemGroup>
+
+</Project>
