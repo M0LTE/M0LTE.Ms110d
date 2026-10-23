@@ -10,7 +10,7 @@ The equaliser and the soft tail-biting decoder are textbook DSP designed from th
 
 ## The design records
 
-The source comments cite paths under `docs/dev/ms110d/`. Those are in the pdn-soundmodem repository, not this one: the transcribed tables and their verification ([docs/dev/ms110d/tables](https://github.com/packet-net/pdn-soundmodem/tree/main/docs/dev/ms110d/tables)), the [design](https://github.com/packet-net/pdn-soundmodem/blob/main/docs/dev/ms110d/design.md), the [per-waveform parameters](https://github.com/packet-net/pdn-soundmodem/blob/main/docs/dev/ms110d/waveforms.md) and the standard itself. Other `docs/dev/...` paths and `#N` issue numbers in comments refer to pdn-soundmodem too.
+The source comments cite paths under `docs/dev/ms110d/`. Those are in the pdn-soundmodem repository, not this one: the transcribed tables and their verification ([docs/dev/ms110d/tables](https://github.com/packet-net/pdn-soundmodem/tree/main/docs/dev/ms110d/tables)), the [design](https://github.com/packet-net/pdn-soundmodem/blob/main/docs/dev/ms110d/design.md), and the standard itself. The per-waveform parameter table moved here as [docs/waveforms.md](docs/waveforms.md). Other `docs/dev/...` paths and `#N` issue numbers in comments refer to pdn-soundmodem too.
 
 ## Validation
 

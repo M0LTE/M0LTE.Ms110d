@@ -10,6 +10,7 @@ A managed **MIL-STD-188-110D Appendix D** 3 kHz serial-tone HF modem for .NET, e
 | `Ms110dFraming`, `Ms110dInterleaver`, `Ms110dPuncture` | The bit pipeline on its own: EOM, tail-biting encode, puncture, interleave. Useful for scoring a received burst against what was sent. |
 
 - Targets `net10.0`. Depends on [M0LTE.Dsp](https://www.nuget.org/packages/M0LTE.Dsp), [M0LTE.Fec](https://www.nuget.org/packages/M0LTE.Fec) and [M0LTE.Ofdm](https://www.nuget.org/packages/M0LTE.Ofdm) (for its complex type).
+- [docs/waveforms.md](docs/waveforms.md) lists every waveform's parameters (modulation, code rate, data rate, frame and probe lengths, interleaver spans, target SNRs) with page references into the standard.
 - Spec-first: every wire constant comes from the standard. Validated in simulation against the standard's own AWGN and Poor-channel performance masks, measured through [M0LTE.HfChannel](https://github.com/M0LTE/M0LTE.HfChannel). Not yet proven against another implementation on air.
 - The public API is locked by a test and the package follows [Semantic Versioning](https://semver.org/); see [docs/versioning.md](docs/versioning.md).
 
