@@ -1,7 +1,6 @@
 using M0LTE.Fec;
 using M0LTE.Dsp;
 using M0LTE.Ms110d.Fec;
-using M0LTE.Ofdm;
 
 namespace M0LTE.Ms110d;
 
@@ -56,13 +55,13 @@ public sealed class Ms110dModulator
     /// <summary>Modulates payload bits (0/1 bytes) into one complete burst at 9600 Hz.</summary>
     public float[] Modulate(ReadOnlySpan<byte> payloadBits)
     {
-        Cf[] symbols = BuildSymbols(payloadBits);
+        Complex32[] symbols = BuildSymbols(payloadBits);
         return Shape(symbols, _settings.Amplitude, _pulse);
     }
 
     /// <summary>Builds the full burst symbol stream (unit-magnitude, one entry per 2400 Bd
     /// symbol) - exposed for hermetic tests that want the wire symbols pre-DSP.</summary>
-    internal Cf[] BuildSymbols(ReadOnlySpan<byte> payloadBits)
+    internal Complex32[] BuildSymbols(ReadOnlySpan<byte> payloadBits)
     {
         var preamble = new PreambleGenerator(_settings.TlcBlocks, _settings.PreambleSuperframes);
         byte[] preambleChips = preamble.Generate(
@@ -76,7 +75,7 @@ public sealed class Ms110dModulator
         PunctureSpec puncture = Ms110dPuncture.Get(code, _mode.CodeRate);
         var interleaver = new Ms110dInterleaver(il.SizeBits, il.Increment);
 
-        var symbols = new List<Cf>(preambleChips.Length + (blocks * il.SizeBits));
+        var symbols = new List<Complex32>(preambleChips.Length + (blocks * il.SizeBits));
         foreach (byte chip in preambleChips)
         {
             symbols.Add(Ms110dTables.Psk8[chip]);
@@ -180,14 +179,14 @@ public sealed class Ms110dModulator
         return ((msb << 1) | lsb) switch { 0 => 0, 1 => 2, 3 => 4, _ => 6 };
     }
 
-    private void AppendProbe(List<Cf> symbols, bool boundary, bool extend)
+    private void AppendProbe(List<Complex32> symbols, bool boundary, bool extend)
     {
-        Cf[] probe = MiniProbe.Get(_mode.K, boundary);
+        Complex32[] probe = MiniProbe.Get(_mode.K, boundary);
         symbols.AddRange(probe);
         if (extend)
         {
             // EOT (D.5.4.4): cyclic extension of the final mini-probe by 32 symbols.
-            (Cf[] baseSeq, int shift) = MiniProbe.Sequence(_mode.K);
+            (Complex32[] baseSeq, int shift) = MiniProbe.Sequence(_mode.K);
             int offset = boundary ? shift : 0;
             for (int i = _mode.K; i < _mode.K + 32; i++)
             {
@@ -196,14 +195,14 @@ public sealed class Ms110dModulator
         }
     }
 
-    private static float[] Shape(Cf[] symbols, float amplitude, float[] pulse)
+    private static float[] Shape(Complex32[] symbols, float amplitude, float[] pulse)
     {
         int length = (symbols.Length * SamplesPerSymbol) + pulse.Length;
         var re = new float[length];
         var im = new float[length];
         for (int n = 0; n < symbols.Length; n++)
         {
-            Cf s = symbols[n] * amplitude;
+            Complex32 s = symbols[n] * amplitude;
             int start = n * SamplesPerSymbol;
             for (int k = 0; k < pulse.Length; k++)
             {

@@ -1,4 +1,3 @@
-using M0LTE.Ofdm;
 
 namespace M0LTE.Ms110d;
 
@@ -42,7 +41,7 @@ public sealed class Wid0WalshModem
     private const int WarmupSymbols = 8;    // noncoherent selection while the DD gains are cold
 
     private readonly Trinomial159Scrambler _scrambler = new();
-    private readonly Cf[] _gains = new Cf[Fingers];
+    private readonly Complex32[] _gains = new Complex32[Fingers];
     private int _symbolsSeen;
 
     /// <summary>Resets the scramble sequence - call at every interleaver boundary. The
@@ -80,7 +79,7 @@ public sealed class Wid0WalshModem
     /// scramble sequence is consumed - feed symbols in order and <see cref="Reset"/> at
     /// interleaver boundaries. Also reports the winning di-bit and its correlation, for
     /// decision-directed carrier tracking.</summary>
-    public void Demodulate(ReadOnlySpan<Cf> chips, Span<float> llrs, out int bestDibit, out Cf bestCorrelation)
+    public void Demodulate(ReadOnlySpan<Complex32> chips, Span<float> llrs, out int bestDibit, out Complex32 bestCorrelation)
     {
         if (chips.Length != ChipsPerSymbol || llrs.Length != 2)
         {
@@ -89,17 +88,17 @@ public sealed class Wid0WalshModem
 
         // Descramble (rotate each chip by the conjugate of its scramble symbol), then
         // correlate against the four Walsh candidates, whose chips are 0 or 4 → ±1 real.
-        Span<Cf> descrambled = stackalloc Cf[ChipsPerSymbol];
+        Span<Complex32> descrambled = stackalloc Complex32[ChipsPerSymbol];
         for (int i = 0; i < ChipsPerSymbol; i++)
         {
             descrambled[i] = chips[i] * Ms110dTables.Psk8[_scrambler.Next()].Conj();
         }
 
-        Span<Cf> corr = stackalloc Cf[4];
+        Span<Complex32> corr = stackalloc Complex32[4];
         for (int s = 0; s < 4; s++)
         {
             byte[] walsh = Ms110dTables.Walsh[s];
-            var acc = Cf.Zero;
+            var acc = Complex32.Zero;
             for (int i = 0; i < ChipsPerSymbol; i++)
             {
                 acc = walsh[i & 3] == 0 ? acc + descrambled[i] : acc - descrambled[i];
@@ -114,7 +113,7 @@ public sealed class Wid0WalshModem
         bestDibit = 0;
         for (int s = 1; s < 4; s++)
         {
-            if (corr[s].Cnorm() > corr[bestDibit].Cnorm())
+            if (corr[s].MagnitudeSquared() > corr[bestDibit].MagnitudeSquared())
             {
                 bestDibit = s;
             }
@@ -138,7 +137,7 @@ public sealed class Wid0WalshModem
     /// PLL. <paramref name="maxFingerAbs"/> is max over fingers of |corr(winner)| for the
     /// all-fingers-weak discriminator.</summary>
     public void DemodulateRake(
-        ReadOnlySpan<Cf> chips, Span<float> llrs, out int bestDibit, out Cf combined,
+        ReadOnlySpan<Complex32> chips, Span<float> llrs, out int bestDibit, out Complex32 combined,
         out double maxFingerAbs)
     {
         if (chips.Length != RakeChips || llrs.Length != 2)
@@ -147,7 +146,7 @@ public sealed class Wid0WalshModem
         }
 
         // One scramble draw per symbol, applied to every finger's window.
-        Span<Cf> rot = stackalloc Cf[ChipsPerSymbol];
+        Span<Complex32> rot = stackalloc Complex32[ChipsPerSymbol];
         for (int i = 0; i < ChipsPerSymbol; i++)
         {
             rot[i] = Ms110dTables.Psk8[_scrambler.Next()].Conj();
@@ -156,8 +155,8 @@ public sealed class Wid0WalshModem
         // Per-finger candidate correlations via quarter-phase sums: the four Walsh rows
         // only depend on i mod 4, so q[j] = Σ_{i≡j} descrambled[i] gives every candidate
         // as ±q[0]±q[1]±q[2]±q[3].
-        Span<Cf> corr = stackalloc Cf[Fingers * 4];
-        Span<Cf> q = stackalloc Cf[4];
+        Span<Complex32> corr = stackalloc Complex32[Fingers * 4];
+        Span<Complex32> q = stackalloc Complex32[4];
         for (int k = 0; k < Fingers; k++)
         {
             q.Clear();
@@ -169,7 +168,7 @@ public sealed class Wid0WalshModem
             for (int s = 0; s < 4; s++)
             {
                 byte[] walsh = Ms110dTables.Walsh[s];
-                var acc = Cf.Zero;
+                var acc = Complex32.Zero;
                 for (int j = 0; j < 4; j++)
                 {
                     acc = walsh[j] == 0 ? acc + q[j] : acc - q[j];
@@ -189,9 +188,9 @@ public sealed class Wid0WalshModem
             double pow = 0;
             for (int k = 0; k < Fingers; k++)
             {
-                Cf c = corr[(k * 4) + s];
+                Complex32 c = corr[(k * 4) + s];
                 acc += (_gains[k].Conj() * c).Re;
-                pow += c.Cnorm();
+                pow += c.MagnitudeSquared();
             }
 
             d[s] = acc;
@@ -214,11 +213,11 @@ public sealed class Wid0WalshModem
         llrs[0] = Math.Max(d[0], d[1]) - Math.Max(d[2], d[3]);
         llrs[1] = Math.Max(d[0], d[2]) - Math.Max(d[1], d[3]);
 
-        combined = Cf.Zero;
+        combined = Complex32.Zero;
         maxFingerAbs = 0;
         for (int k = 0; k < Fingers; k++)
         {
-            Cf c = corr[(k * 4) + bestDibit];
+            Complex32 c = corr[(k * 4) + bestDibit];
             combined += _gains[k].Conj() * c;
             double abs = c.Abs();
             if (abs > maxFingerAbs)
@@ -244,33 +243,33 @@ public sealed class Wid0WalshModem
     /// carrier-PLL observable self-cancels under truth gains (registered mechanism
     /// note 1) - the caller skips RetuneCarrier in oracle mode.</summary>
     public void DemodulateRakeOracle(
-        ReadOnlySpan<Cf> chips, ReadOnlySpan<Cf> cleanChips, int trueDibit, bool pole,
-        Span<float> llrs, out int bestDibit, out Cf combined, out double maxFingerAbs)
+        ReadOnlySpan<Complex32> chips, ReadOnlySpan<Complex32> cleanChips, int trueDibit, bool pole,
+        Span<float> llrs, out int bestDibit, out Complex32 combined, out double maxFingerAbs)
     {
         if (chips.Length != RakeChips || cleanChips.Length != RakeChips || llrs.Length != 2)
         {
             throw new ArgumentException("expected 44 noisy + 44 clean chips and 2 LLRs", nameof(chips));
         }
 
-        Span<Cf> rot = stackalloc Cf[ChipsPerSymbol];
+        Span<Complex32> rot = stackalloc Complex32[ChipsPerSymbol];
         for (int i = 0; i < ChipsPerSymbol; i++)
         {
             rot[i] = Ms110dTables.Psk8[_scrambler.Next()].Conj();
         }
 
         // Noisy candidate correlations - the same quarter-phase construction as shipped.
-        Span<Cf> corr = stackalloc Cf[Fingers * 4];
-        Span<Cf> q = stackalloc Cf[4];
+        Span<Complex32> corr = stackalloc Complex32[Fingers * 4];
+        Span<Complex32> q = stackalloc Complex32[4];
         byte[] trueWalsh = Ms110dTables.Walsh[trueDibit];
-        Span<Cf> truth = stackalloc Cf[Fingers];
+        Span<Complex32> truth = stackalloc Complex32[Fingers];
         for (int k = 0; k < Fingers; k++)
         {
             q.Clear();
-            var cleanAcc = Cf.Zero;
+            var cleanAcc = Complex32.Zero;
             for (int i = 0; i < ChipsPerSymbol; i++)
             {
                 q[i & 3] += chips[k + i] * rot[i];
-                Cf clean = cleanChips[k + i] * rot[i];
+                Complex32 clean = cleanChips[k + i] * rot[i];
                 cleanAcc = trueWalsh[i & 3] == 0 ? cleanAcc + clean : cleanAcc - clean;
             }
 
@@ -278,7 +277,7 @@ public sealed class Wid0WalshModem
             for (int s = 0; s < 4; s++)
             {
                 byte[] walsh = Ms110dTables.Walsh[s];
-                var acc = Cf.Zero;
+                var acc = Complex32.Zero;
                 for (int j = 0; j < 4; j++)
                 {
                     acc = walsh[j] == 0 ? acc + q[j] : acc - q[j];
@@ -305,9 +304,9 @@ public sealed class Wid0WalshModem
             double pow = 0;
             for (int k = 0; k < Fingers; k++)
             {
-                Cf c = corr[(k * 4) + s];
+                Complex32 c = corr[(k * 4) + s];
                 acc += (_gains[k].Conj() * c).Re;
-                pow += c.Cnorm();
+                pow += c.MagnitudeSquared();
             }
 
             d[s] = acc;
@@ -329,11 +328,11 @@ public sealed class Wid0WalshModem
         llrs[0] = Math.Max(d[0], d[1]) - Math.Max(d[2], d[3]);
         llrs[1] = Math.Max(d[0], d[2]) - Math.Max(d[1], d[3]);
 
-        combined = Cf.Zero;
+        combined = Complex32.Zero;
         maxFingerAbs = 0;
         for (int k = 0; k < Fingers; k++)
         {
-            Cf c = corr[(k * 4) + bestDibit];
+            Complex32 c = corr[(k * 4) + bestDibit];
             combined += _gains[k].Conj() * c;
             double abs = c.Abs();
             if (abs > maxFingerAbs)

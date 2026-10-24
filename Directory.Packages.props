@@ -12,11 +12,9 @@
     <!-- The Watterson HF channel and the impulse noise the masks are measured through. -->
     <PackageVersion Include="M0LTE.HfChannel" Version="0.1.0" />
 
-    <!-- Dependencies. M0LTE.Ofdm is here for its complex type Cf, which the equaliser and the
-         channel model share. -->
+    <!-- Dependencies -->
     <PackageVersion Include="M0LTE.Dsp" Version="0.2.2" />
     <PackageVersion Include="M0LTE.Fec" Version="0.3.0" />
-    <PackageVersion Include="M0LTE.Ofdm" Version="0.1.0" />
 
     <!-- Public-API lock -->
     <PackageVersion Include="PublicApiGenerator" Version="11.4.5" />

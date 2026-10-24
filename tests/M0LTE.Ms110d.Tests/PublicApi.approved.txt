@@ -1,34 +1,56 @@
 namespace M0LTE.Ms110d
 {
+    public readonly struct Complex32 : System.IEquatable<M0LTE.Ms110d.Complex32>
+    {
+        public readonly float Im;
+        public readonly float Re;
+        public Complex32(float re, float im) { }
+        public static M0LTE.Ms110d.Complex32 Zero { get; }
+        public float Abs() { }
+        public float Arg() { }
+        public M0LTE.Ms110d.Complex32 Conj() { }
+        public bool Equals(M0LTE.Ms110d.Complex32 other) { }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public float MagnitudeSquared() { }
+        public override string ToString() { }
+        public static M0LTE.Ms110d.Complex32 FromPhase(float phase) { }
+        public static bool operator !=(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
+        public static M0LTE.Ms110d.Complex32 operator *(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
+        public static M0LTE.Ms110d.Complex32 operator *(M0LTE.Ms110d.Complex32 a, float s) { }
+        public static M0LTE.Ms110d.Complex32 operator +(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
+        public static M0LTE.Ms110d.Complex32 operator -(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
+        public static bool operator ==(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
+    }
     public sealed class Dfe
     {
         public Dfe(int ffTaps, int fbTaps) { }
         public int FbTaps { get; }
         public float FfEnergy { get; }
         public int FfTaps { get; }
-        public void AddTrainingRow(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past, M0LTE.Ofdm.Cf desired, float weight = 1) { }
-        public void AddTrainingRow(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past, System.ReadOnlySpan<float> pastVariance, M0LTE.Ofdm.Cf desired, float weight = 1) { }
+        public void AddTrainingRow(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> window, System.ReadOnlySpan<M0LTE.Ms110d.Complex32> past, M0LTE.Ms110d.Complex32 desired, float weight = 1) { }
+        public void AddTrainingRow(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> window, System.ReadOnlySpan<M0LTE.Ms110d.Complex32> past, System.ReadOnlySpan<float> pastVariance, M0LTE.Ms110d.Complex32 desired, float weight = 1) { }
         public void BeginRls(float lambda, float pInit = 1) { }
         public void BeginTraining() { }
-        public M0LTE.Ofdm.Cf Equalize(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past) { }
-        public void LoadInterpolatedTaps(System.ReadOnlySpan<M0LTE.Ofdm.Cf> a, System.ReadOnlySpan<M0LTE.Ofdm.Cf> b, float alpha) { }
-        public void LoadTaps(System.ReadOnlySpan<M0LTE.Ofdm.Cf> taps) { }
-        public M0LTE.Ofdm.Cf Nlms(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past, M0LTE.Ofdm.Cf desired, float mu) { }
+        public M0LTE.Ms110d.Complex32 Equalize(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> window, System.ReadOnlySpan<M0LTE.Ms110d.Complex32> past) { }
+        public void LoadInterpolatedTaps(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> a, System.ReadOnlySpan<M0LTE.Ms110d.Complex32> b, float alpha) { }
+        public void LoadTaps(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> taps) { }
+        public M0LTE.Ms110d.Complex32 Nlms(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> window, System.ReadOnlySpan<M0LTE.Ms110d.Complex32> past, M0LTE.Ms110d.Complex32 desired, float mu) { }
         public void RestoreTraining() { }
-        public M0LTE.Ofdm.Cf RlsUpdate(System.ReadOnlySpan<M0LTE.Ofdm.Cf> window, System.ReadOnlySpan<M0LTE.Ofdm.Cf> past, M0LTE.Ofdm.Cf desired, float weight = 1) { }
-        public void RotateTaps(M0LTE.Ofdm.Cf rotor) { }
+        public M0LTE.Ms110d.Complex32 RlsUpdate(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> window, System.ReadOnlySpan<M0LTE.Ms110d.Complex32> past, M0LTE.Ms110d.Complex32 desired, float weight = 1) { }
+        public void RotateTaps(M0LTE.Ms110d.Complex32 rotor) { }
         public void SeedRlsFromTraining(float regularization, float pFallback = 1, float ffNoisePower = 0) { }
-        public M0LTE.Ofdm.Cf[] SnapshotTaps() { }
+        public M0LTE.Ms110d.Complex32[] SnapshotTaps() { }
         public void SnapshotTraining() { }
         public bool SolveTraining(float regularization = 0.001, bool anchorToCurrentTaps = false, float ffNoisePower = 0) { }
         public M0LTE.Ms110d.Dfe.TirSolve SolveTrainingTir(float regularization, float ffNoisePower, int maxLag, bool allowPair = true, int onlyLag = 0) { }
         public void SymmetrizeP(float pMax = 10) { }
-        public void TranslateTaps(System.ReadOnlySpan<M0LTE.Ofdm.Cf> from, System.ReadOnlySpan<M0LTE.Ofdm.Cf> to) { }
+        public void TranslateTaps(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> from, System.ReadOnlySpan<M0LTE.Ms110d.Complex32> to) { }
         public readonly struct TirSolve : System.IEquatable<M0LTE.Ms110d.Dfe.TirSolve>
         {
-            public TirSolve(bool Solved, int Lag, M0LTE.Ofdm.Cf Coefficient, int Lag2, M0LTE.Ofdm.Cf Coefficient2, float SseNull, float SseTir) { }
-            public M0LTE.Ofdm.Cf Coefficient { get; init; }
-            public M0LTE.Ofdm.Cf Coefficient2 { get; init; }
+            public TirSolve(bool Solved, int Lag, M0LTE.Ms110d.Complex32 Coefficient, int Lag2, M0LTE.Ms110d.Complex32 Coefficient2, float SseNull, float SseTir) { }
+            public M0LTE.Ms110d.Complex32 Coefficient { get; init; }
+            public M0LTE.Ms110d.Complex32 Coefficient2 { get; init; }
             public int Lag { get; init; }
             public int Lag2 { get; init; }
             public bool Solved { get; init; }
@@ -38,7 +60,7 @@ namespace M0LTE.Ms110d
     }
     public static class MiniProbe
     {
-        public static M0LTE.Ofdm.Cf[] Get(int k, bool boundary) { }
+        public static M0LTE.Ms110d.Complex32[] Get(int k, bool boundary) { }
     }
     public sealed class Ms110dBurst : System.IEquatable<M0LTE.Ms110d.Ms110dBurst>
     {
@@ -89,7 +111,7 @@ namespace M0LTE.Ms110d
         public int TurboSkipped { get; }
         public event System.Action<M0LTE.Ms110d.Ms110dRxBlock>? BlockDecoded;
         public event System.Action<M0LTE.Ms110d.Ms110dBurst>? BurstCompleted;
-        public event System.Action<M0LTE.Ofdm.Cf>? DataSymbolEqualized;
+        public event System.Action<M0LTE.Ms110d.Complex32>? DataSymbolEqualized;
         public event System.Action<int, float[]>? FirstPassBlockLlrs;
         public event System.Action<string>? FrameDiagnostics;
         public event System.Action<int, float[], byte[]>? OracleBlockLlrs;
@@ -186,12 +208,12 @@ namespace M0LTE.Ms110d
         public const int PreambleChipsPerSymbol = 32;
         public const int SubCarrierHz = 1800;
         public const int SymbolRate = 2400;
-        public static readonly M0LTE.Ofdm.Cf[] Base13;
-        public static readonly M0LTE.Ofdm.Cf[] Base16;
-        public static readonly M0LTE.Ofdm.Cf[] Base19;
-        public static readonly M0LTE.Ofdm.Cf[] Base25;
-        public static readonly M0LTE.Ofdm.Cf[] Psk8;
-        public static readonly M0LTE.Ofdm.Cf[] Qam16;
+        public static readonly M0LTE.Ms110d.Complex32[] Base13;
+        public static readonly M0LTE.Ms110d.Complex32[] Base16;
+        public static readonly M0LTE.Ms110d.Complex32[] Base19;
+        public static readonly M0LTE.Ms110d.Complex32[] Base25;
+        public static readonly M0LTE.Ms110d.Complex32[] Psk8;
+        public static readonly M0LTE.Ms110d.Complex32[] Qam16;
         public static readonly byte[][] Walsh;
         public static System.ReadOnlySpan<byte> CntPn { get; }
         public static System.ReadOnlySpan<byte> FixedDibits { get; }
@@ -236,9 +258,9 @@ namespace M0LTE.Ms110d
         public const int RakeChips = 44;
         public Wid0WalshModem() { }
         public void CopyGainMagnitudes(System.Span<float> mags) { }
-        public void Demodulate(System.ReadOnlySpan<M0LTE.Ofdm.Cf> chips, System.Span<float> llrs, out int bestDibit, out M0LTE.Ofdm.Cf bestCorrelation) { }
-        public void DemodulateRake(System.ReadOnlySpan<M0LTE.Ofdm.Cf> chips, System.Span<float> llrs, out int bestDibit, out M0LTE.Ofdm.Cf combined, out double maxFingerAbs) { }
-        public void DemodulateRakeOracle(System.ReadOnlySpan<M0LTE.Ofdm.Cf> chips, System.ReadOnlySpan<M0LTE.Ofdm.Cf> cleanChips, int trueDibit, bool pole, System.Span<float> llrs, out int bestDibit, out M0LTE.Ofdm.Cf combined, out double maxFingerAbs) { }
+        public void Demodulate(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> chips, System.Span<float> llrs, out int bestDibit, out M0LTE.Ms110d.Complex32 bestCorrelation) { }
+        public void DemodulateRake(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> chips, System.Span<float> llrs, out int bestDibit, out M0LTE.Ms110d.Complex32 combined, out double maxFingerAbs) { }
+        public void DemodulateRakeOracle(System.ReadOnlySpan<M0LTE.Ms110d.Complex32> chips, System.ReadOnlySpan<M0LTE.Ms110d.Complex32> cleanChips, int trueDibit, bool pole, System.Span<float> llrs, out int bestDibit, out M0LTE.Ms110d.Complex32 combined, out double maxFingerAbs) { }
         public void Modulate(System.ReadOnlySpan<byte> fetchedBits, System.Span<byte> psk8Chips) { }
         public void Reset() { }
     }

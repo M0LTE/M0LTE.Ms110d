@@ -1,4 +1,3 @@
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 
 namespace M0LTE.Ms110d.Tests;
@@ -18,10 +17,10 @@ public class Ms110dCarrierFitTests
     [Fact]
     public void Clean_Cfo_Ramp_Is_Recovered()
     {
-        var groups = new Cf[40];
+        var groups = new Complex32[40];
         for (int j = 0; j < 40; j++)
         {
-            groups[j] = Cf.Cmplx((float)((0.3 * j) + 0.7)) * 5f;
+            groups[j] = Complex32.FromPhase((float)((0.3 * j) + 0.7)) * 5f;
         }
 
         Ms110dDemodulator.EstimateCarrierFit(groups, out double slope, out double intercept)
@@ -39,20 +38,20 @@ public class Ms110dCarrierFitTests
         // through the fade and the regression fitted −4.86 Hz; the true rotation across
         // the window was near zero. Faded groups must self-suppress instead.
         var random = new Random(41);
-        var groups = new Cf[72];
+        var groups = new Complex32[72];
         for (int j = 0; j < 20; j++)
         {
-            groups[j] = Cf.Cmplx(0.9f) * 3f;
+            groups[j] = Complex32.FromPhase(0.9f) * 3f;
         }
 
         for (int j = 20; j < 35; j++)
         {
-            groups[j] = Cf.Cmplx((float)((random.NextDouble() * 2 * Math.PI) - Math.PI)) * 0.05f;
+            groups[j] = Complex32.FromPhase((float)((random.NextDouble() * 2 * Math.PI) - Math.PI)) * 0.05f;
         }
 
         for (int j = 35; j < 72; j++)
         {
-            groups[j] = Cf.Cmplx(0.9f) * 3f;
+            groups[j] = Complex32.FromPhase(0.9f) * 3f;
         }
 
         Ms110dDemodulator.EstimateCarrierFit(groups, out double slope, out double intercept)
@@ -70,11 +69,11 @@ public class Ms110dCarrierFitTests
         // so the branch must be resolved from the lag-1 estimate. Mild per-group phase
         // noise makes the lag-8 refinement matter without burying the branch decision.
         var random = new Random(43);
-        var groups = new Cf[40];
+        var groups = new Complex32[40];
         for (int j = 0; j < 40; j++)
         {
             double noise = 0.1 * ((random.NextDouble() * 2) - 1);
-            groups[j] = Cf.Cmplx((float)((0.5 * j) + noise)) * 2f;
+            groups[j] = Complex32.FromPhase((float)((0.5 * j) + noise)) * 2f;
         }
 
         Ms110dDemodulator.EstimateCarrierFit(groups, out double slope, out _)
@@ -86,7 +85,7 @@ public class Ms110dCarrierFitTests
     [Fact]
     public void An_Empty_Window_Refuses_To_Fit()
     {
-        var groups = new Cf[40]; // all zero - no signal at all
+        var groups = new Complex32[40]; // all zero - no signal at all
         Ms110dDemodulator.EstimateCarrierFit(groups, out _, out _)
             .Should().BeFalse("retuning the carrier on pure noise is worse than keeping it");
     }

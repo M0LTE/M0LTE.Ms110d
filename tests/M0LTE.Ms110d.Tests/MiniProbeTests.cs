@@ -1,5 +1,4 @@
 using M0LTE.Ms110d;
-using M0LTE.Ofdm;
 
 namespace M0LTE.Ms110d.Tests;
 
@@ -8,7 +7,7 @@ public class MiniProbeTests
     [Fact]
     public void Probe_24_Prefix_Is_Barker_13()
     {
-        Cf[] probe = MiniProbe.Get(24, boundary: false);
+        Complex32[] probe = MiniProbe.Get(24, boundary: false);
         float[] barker = [1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1];
         for (int i = 0; i < 13; i++)
         {
@@ -30,8 +29,8 @@ public class MiniProbeTests
     public void Boundary_Probe_Is_The_Base_Cyclically_Shifted_By_The_Table_DXxi_Shift(
         int k, int baseLength, int shift)
     {
-        Cf[] probe = MiniProbe.Get(k, boundary: false);
-        Cf[] boundary = MiniProbe.Get(k, boundary: true);
+        Complex32[] probe = MiniProbe.Get(k, boundary: false);
+        Complex32[] boundary = MiniProbe.Get(k, boundary: true);
         for (int i = 0; i < k; i++)
         {
             boundary[i].Should().Be(probe[(i + shift) % baseLength]);
@@ -44,13 +43,13 @@ public class MiniProbeTests
     [InlineData(48)]
     public void Base_Sequences_Have_Low_Periodic_Autocorrelation_Sidelobes(int k)
     {
-        (Cf[] baseSeq, _) = MiniProbe.Sequence(k);
+        (Complex32[] baseSeq, _) = MiniProbe.Sequence(k);
         int n = baseSeq.Length;
         float peak = 0;
         float worstSidelobe = 0;
         for (int lag = 0; lag < n; lag++)
         {
-            var acc = Cf.Zero;
+            var acc = Complex32.Zero;
             for (int i = 0; i < n; i++)
             {
                 acc += baseSeq[i] * baseSeq[(i + lag) % n].Conj();
@@ -79,7 +78,7 @@ public class MiniProbeTests
     {
         foreach (int k in new[] { 24, 32, 36, 48 })
         {
-            foreach (Cf symbol in MiniProbe.Get(k, boundary: false))
+            foreach (Complex32 symbol in MiniProbe.Get(k, boundary: false))
             {
                 symbol.Abs().Should().BeApproximately(1f, 1e-5f);
             }

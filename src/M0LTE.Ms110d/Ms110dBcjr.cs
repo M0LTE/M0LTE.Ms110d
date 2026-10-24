@@ -1,5 +1,4 @@
 using System.Buffers;
-using M0LTE.Ofdm;
 
 namespace M0LTE.Ms110d;
 
@@ -25,7 +24,7 @@ internal static class Ms110dBcjr
     /// <param name="noiseVar">Noise variance (per complex dimension).</param>
     /// <returns>LLR for each symbol (positive = bit 0 = symbol +1).</returns>
     public static float[] Equalize(
-        ReadOnlySpan<Cf> rx, ReadOnlySpan<Cf> h1, ReadOnlySpan<Cf> h2, int delay, float noiseVar)
+        ReadOnlySpan<Complex32> rx, ReadOnlySpan<Complex32> h1, ReadOnlySpan<Complex32> h2, int delay, float noiseVar)
     {
         int n = rx.Length;
         int l = delay;
@@ -52,9 +51,9 @@ internal static class Ms110dBcjr
                 {
                     float xN = b == 0 ? 1f : -1f;
                     float xDelayed = GetDelayedSymbol(s, l, delay);
-                    Cf yExp = h1[t] * xN + h2[t] * xDelayed;
-                    Cf diff = rx[t] - yExp;
-                    float gamma = -diff.Cnorm() * invTwoSigma2;
+                    Complex32 yExp = h1[t] * xN + h2[t] * xDelayed;
+                    Complex32 diff = rx[t] - yExp;
+                    float gamma = -diff.MagnitudeSquared() * invTwoSigma2;
                     int nextState = ((s << 1) | b) & (nStates - 1);
                     float val = alpha + gamma;
                     if (val > logAlpha[baseNext + nextState])
@@ -80,9 +79,9 @@ internal static class Ms110dBcjr
                 {
                     float xN = b == 0 ? 1f : -1f;
                     float xDelayed = GetDelayedSymbol(s, l, delay);
-                    Cf yExp = h1[t] * xN + h2[t] * xDelayed;
-                    Cf diff = rx[t] - yExp;
-                    float gamma = -diff.Cnorm() * invTwoSigma2;
+                    Complex32 yExp = h1[t] * xN + h2[t] * xDelayed;
+                    Complex32 diff = rx[t] - yExp;
+                    float gamma = -diff.MagnitudeSquared() * invTwoSigma2;
                     int nextState = ((s << 1) | b) & (nStates - 1);
                     float val = logBeta[baseNext + nextState] + gamma;
                     if (val > best) best = val;
@@ -109,9 +108,9 @@ internal static class Ms110dBcjr
                 {
                     float xN = b == 0 ? 1f : -1f;
                     float xDelayed = GetDelayedSymbol(s, l, delay);
-                    Cf yExp = h1[t] * xN + h2[t] * xDelayed;
-                    Cf diff = rx[t] - yExp;
-                    float gamma = -diff.Cnorm() * invTwoSigma2;
+                    Complex32 yExp = h1[t] * xN + h2[t] * xDelayed;
+                    Complex32 diff = rx[t] - yExp;
+                    float gamma = -diff.MagnitudeSquared() * invTwoSigma2;
                     int nextState = ((s << 1) | b) & (nStates - 1);
                     float val = alpha + gamma + logBeta[baseNext + nextState];
 

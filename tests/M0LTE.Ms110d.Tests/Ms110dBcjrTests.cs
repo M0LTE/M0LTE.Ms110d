@@ -1,4 +1,3 @@
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 
 namespace M0LTE.Ms110d.Tests;
@@ -29,16 +28,16 @@ public class Ms110dBcjrTests
         const int n = 64;
         const float noiseVar = 0.05f;
         var random = new Random(52);
-        var rx = new Cf[n];
-        var h1 = new Cf[n];
-        var h2 = new Cf[n];
+        var rx = new Complex32[n];
+        var h1 = new Complex32[n];
+        var h2 = new Complex32[n];
         float sigma = MathF.Sqrt(noiseVar);
         for (int i = 0; i < n; i++)
         {
-            h1[i] = new Cf(1, 0);
-            h2[i] = Cf.Zero;
+            h1[i] = new Complex32(1, 0);
+            h2[i] = Complex32.Zero;
             float symbol = random.Next(2) == 0 ? 1f : -1f;
-            rx[i] = new Cf(
+            rx[i] = new Complex32(
                 symbol + (sigma * (float)Gaussian(random)),
                 sigma * (float)Gaussian(random));
         }
@@ -69,16 +68,16 @@ public class Ms110dBcjrTests
             tx[i] = random.Next(2) == 0 ? 1f : -1f;
         }
 
-        var h1 = new Cf[n];
-        var h2 = new Cf[n];
-        var rx = new Cf[n];
+        var h1 = new Complex32[n];
+        var h2 = new Complex32[n];
+        var rx = new Complex32[n];
         float sigma = MathF.Sqrt(noiseVar);
         for (int i = 0; i < n; i++)
         {
-            h1[i] = new Cf(1, 0);
-            h2[i] = new Cf(h2Mag, 0);
+            h1[i] = new Complex32(1, 0);
+            h2[i] = new Complex32(h2Mag, 0);
             float signal = tx[i] + (i >= delay ? h2Mag * tx[i - delay] : 0f);
-            rx[i] = new Cf(
+            rx[i] = new Complex32(
                 signal + (sigma * (float)Gaussian(random)),
                 sigma * (float)Gaussian(random));
         }

@@ -1,4 +1,3 @@
-using M0LTE.Ofdm;
 
 namespace M0LTE.Ms110d;
 
@@ -15,32 +14,32 @@ namespace M0LTE.Ms110d;
 /// (<c>past[j] = d̂[n−1−j]</c>). Output y = Σ ff·window + Σ fb·past - feedback signs live in
 /// the taps. Initial taps come from a regularized least-squares solve over the known
 /// preamble tail + first probe (<see cref="BeginTraining"/>/
-/// <see cref="AddTrainingRow(ReadOnlySpan{Cf}, ReadOnlySpan{Cf}, Cf, float)"/>/
+/// <see cref="AddTrainingRow(ReadOnlySpan{Complex32}, ReadOnlySpan{Complex32}, Complex32, float)"/>/
 /// <see cref="SolveTraining"/>); per-probe refresh uses <see cref="Nlms"/>.
 /// </remarks>
 public sealed class Dfe
 {
-    private readonly Cf[] _ff;
-    private readonly Cf[] _fb;
-    private readonly Cf[,] _gramStore;
-    private readonly Cf[] _rhsStore;
-    private readonly Cf[,] _cholL;
-    private readonly Cf[] _cholY;
-    private readonly Cf[] _solution;
-    private readonly Cf[,] _seedGram;
-    private readonly Cf[] _seedColumn;
-    private readonly Cf[,] _tirGram;
-    private readonly Cf[] _tirRhs;
-    private readonly Cf[] _tirSol;
-    private readonly Cf[] _tirWin;
-    private readonly Cf[][] _tirCols;
-    private Cf[,]? _gram;
-    private Cf[]? _rhs;
+    private readonly Complex32[] _ff;
+    private readonly Complex32[] _fb;
+    private readonly Complex32[,] _gramStore;
+    private readonly Complex32[] _rhsStore;
+    private readonly Complex32[,] _cholL;
+    private readonly Complex32[] _cholY;
+    private readonly Complex32[] _solution;
+    private readonly Complex32[,] _seedGram;
+    private readonly Complex32[] _seedColumn;
+    private readonly Complex32[,] _tirGram;
+    private readonly Complex32[] _tirRhs;
+    private readonly Complex32[] _tirSol;
+    private readonly Complex32[] _tirWin;
+    private readonly Complex32[][] _tirCols;
+    private Complex32[,]? _gram;
+    private Complex32[]? _rhs;
     private int _trainingRows;
     private float _trainingWeightSum;
     private float _trainingTargetEnergy;
-    private Cf[,]? _savedGram;
-    private Cf[]? _savedRhs;
+    private Complex32[,]? _savedGram;
+    private Complex32[]? _savedRhs;
     private int _savedTrainingRows;
     private float _savedTrainingWeightSum;
     private float _savedTrainingTargetEnergy;
@@ -50,21 +49,21 @@ public sealed class Dfe
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(ffTaps, 1);
         ArgumentOutOfRangeException.ThrowIfNegative(fbTaps);
-        _ff = new Cf[ffTaps];
-        _fb = new Cf[fbTaps];
+        _ff = new Complex32[ffTaps];
+        _fb = new Complex32[fbTaps];
         int n = ffTaps + fbTaps;
-        _gramStore = new Cf[n, n];
-        _rhsStore = new Cf[n];
-        _cholL = new Cf[n, n];
-        _cholY = new Cf[n];
-        _solution = new Cf[n];
-        _seedGram = new Cf[n, n];
-        _seedColumn = new Cf[n];
-        _tirGram = new Cf[n, n];
-        _tirRhs = new Cf[n];
-        _tirSol = new Cf[n];
-        _tirWin = new Cf[n];
-        _tirCols = [new Cf[ffTaps], new Cf[ffTaps], new Cf[ffTaps]];
+        _gramStore = new Complex32[n, n];
+        _rhsStore = new Complex32[n];
+        _cholL = new Complex32[n, n];
+        _cholY = new Complex32[n];
+        _solution = new Complex32[n];
+        _seedGram = new Complex32[n, n];
+        _seedColumn = new Complex32[n];
+        _tirGram = new Complex32[n, n];
+        _tirRhs = new Complex32[n];
+        _tirSol = new Complex32[n];
+        _tirWin = new Complex32[n];
+        _tirCols = [new Complex32[ffTaps], new Complex32[ffTaps], new Complex32[ffTaps]];
     }
 
     /// <summary>Feed-forward (T/2) tap count.</summary>
@@ -77,9 +76,9 @@ public sealed class Dfe
         get
         {
             float e = 0f;
-            foreach (Cf t in _ff)
+            foreach (Complex32 t in _ff)
             {
-                e += t.Cnorm();
+                e += t.MagnitudeSquared();
             }
 
             return e;
@@ -90,9 +89,9 @@ public sealed class Dfe
     public int FbTaps => _fb.Length;
 
     /// <summary>Equalizes one symbol.</summary>
-    public Cf Equalize(ReadOnlySpan<Cf> window, ReadOnlySpan<Cf> past)
+    public Complex32 Equalize(ReadOnlySpan<Complex32> window, ReadOnlySpan<Complex32> past)
     {
-        var y = Cf.Zero;
+        var y = Complex32.Zero;
         for (int i = 0; i < _ff.Length; i++)
         {
             y += _ff[i] * window[i];
@@ -108,23 +107,23 @@ public sealed class Dfe
 
     /// <summary>One normalized-LMS update toward <paramref name="desired"/>; returns the
     /// pre-update equalizer output.</summary>
-    public Cf Nlms(ReadOnlySpan<Cf> window, ReadOnlySpan<Cf> past, Cf desired, float mu)
+    public Complex32 Nlms(ReadOnlySpan<Complex32> window, ReadOnlySpan<Complex32> past, Complex32 desired, float mu)
     {
-        Cf y = Equalize(window, past);
-        Cf error = desired - y;
+        Complex32 y = Equalize(window, past);
+        Complex32 error = desired - y;
         float norm = 1e-6f;
         for (int i = 0; i < _ff.Length; i++)
         {
-            norm += window[i].Cnorm();
+            norm += window[i].MagnitudeSquared();
         }
 
         for (int j = 0; j < _fb.Length; j++)
         {
-            norm += past[j].Cnorm();
+            norm += past[j].MagnitudeSquared();
         }
 
         float g = mu / norm;
-        Cf scaled = error * g;
+        Complex32 scaled = error * g;
         for (int i = 0; i < _ff.Length; i++)
         {
             _ff[i] += scaled * window[i].Conj();
@@ -139,16 +138,16 @@ public sealed class Dfe
     }
 
     /// <summary>Copies the current taps (FF then FB) into a new array.</summary>
-    public Cf[] SnapshotTaps()
+    public Complex32[] SnapshotTaps()
     {
-        var taps = new Cf[_ff.Length + _fb.Length];
+        var taps = new Complex32[_ff.Length + _fb.Length];
         _ff.CopyTo(taps, 0);
         _fb.CopyTo(taps, _ff.Length);
         return taps;
     }
 
     /// <summary>Installs taps from a <see cref="SnapshotTaps"/> array.</summary>
-    public void LoadTaps(ReadOnlySpan<Cf> taps)
+    public void LoadTaps(ReadOnlySpan<Complex32> taps)
     {
         taps[.._ff.Length].CopyTo(_ff);
         taps[_ff.Length..].CopyTo(_fb);
@@ -156,7 +155,7 @@ public sealed class Dfe
 
     /// <summary>Installs the linear interpolation (1−α)·a + α·b of two snapshots - the
     /// per-symbol tap trajectory across a data block bracketed by two solved probes.</summary>
-    public void LoadInterpolatedTaps(ReadOnlySpan<Cf> a, ReadOnlySpan<Cf> b, float alpha)
+    public void LoadInterpolatedTaps(ReadOnlySpan<Complex32> a, ReadOnlySpan<Complex32> b, float alpha)
     {
         float inverse = 1 - alpha;
         for (int i = 0; i < _ff.Length; i++)
@@ -176,7 +175,7 @@ public sealed class Dfe
     /// deviation the RLS recursion has accumulated on top of the previous base carries
     /// over to the new one unchanged (phase-b-plan §B2.1: the base carries the
     /// probe-anchored channel trajectory, RLS tracks only the residual).</summary>
-    public void TranslateTaps(ReadOnlySpan<Cf> from, ReadOnlySpan<Cf> to)
+    public void TranslateTaps(ReadOnlySpan<Complex32> from, ReadOnlySpan<Complex32> to)
     {
         for (int i = 0; i < _ff.Length; i++)
         {
@@ -194,7 +193,7 @@ public sealed class Dfe
     /// per-probe phase re-anchor. The channel's common rotation moves the feed-forward
     /// response AND the post-cursor ISI the feedback taps cancel, so the full tap vector
     /// rotates together.</summary>
-    public void RotateTaps(Cf rotor)
+    public void RotateTaps(Complex32 rotor)
     {
         for (int i = 0; i < _ff.Length; i++)
         {
@@ -226,8 +225,8 @@ public sealed class Dfe
     /// <see cref="RestoreTraining"/>.</summary>
     public void SnapshotTraining()
     {
-        _savedGram ??= new Cf[_gramStore.GetLength(0), _gramStore.GetLength(1)];
-        _savedRhs ??= new Cf[_rhsStore.Length];
+        _savedGram ??= new Complex32[_gramStore.GetLength(0), _gramStore.GetLength(1)];
+        _savedRhs ??= new Complex32[_rhsStore.Length];
         Array.Copy(_gramStore, _savedGram, _gramStore.Length);
         Array.Copy(_rhsStore, _savedRhs, _rhsStore.Length);
         _savedTrainingRows = _trainingRows;
@@ -257,7 +256,7 @@ public sealed class Dfe
     /// scales the row's least-squares influence - known probe symbols get authoritative
     /// weight, decision-directed rows advisory weight (wrong decisions under a rotated
     /// constellation are self-confirming and must never outvote the probes).</summary>
-    public void AddTrainingRow(ReadOnlySpan<Cf> window, ReadOnlySpan<Cf> past, Cf desired, float weight = 1f)
+    public void AddTrainingRow(ReadOnlySpan<Complex32> window, ReadOnlySpan<Complex32> past, Complex32 desired, float weight = 1f)
     {
         if (_gram is null || _rhs is null)
         {
@@ -265,7 +264,7 @@ public sealed class Dfe
         }
 
         int n = _ff.Length + _fb.Length;
-        Span<Cf> row = stackalloc Cf[n];
+        Span<Complex32> row = stackalloc Complex32[n];
         for (int i = 0; i < _ff.Length; i++)
         {
             row[i] = window[i];
@@ -278,7 +277,7 @@ public sealed class Dfe
 
         for (int i = 0; i < n; i++)
         {
-            Cf ci = row[i].Conj() * weight;
+            Complex32 ci = row[i].Conj() * weight;
             for (int j = i; j < n; j++)
             {
                 _gram[i, j] += ci * row[j];
@@ -289,11 +288,11 @@ public sealed class Dfe
 
         _trainingRows++;
         _trainingWeightSum += weight;
-        _trainingTargetEnergy += weight * desired.Cnorm();
+        _trainingTargetEnergy += weight * desired.MagnitudeSquared();
     }
 
     /// <summary>Soft-label variant of
-    /// <see cref="AddTrainingRow(ReadOnlySpan{Cf}, ReadOnlySpan{Cf}, Cf, float)"/> for rows
+    /// <see cref="AddTrainingRow(ReadOnlySpan{Complex32}, ReadOnlySpan{Complex32}, Complex32, float)"/> for rows
     /// whose <paramref name="past"/> entries are expectations E[x] rather than known
     /// symbols. The EM-correct Gram needs E[x·x̄] = |E[x]|² + Var on the feedback
     /// <b>diagonal</b> (cross terms factor under symbol independence; feed-forward columns
@@ -301,13 +300,13 @@ public sealed class Dfe
     /// per-entry variance added there. Zero variances reduce bit-identically to the base
     /// overload.</summary>
     public void AddTrainingRow(
-        ReadOnlySpan<Cf> window, ReadOnlySpan<Cf> past, ReadOnlySpan<float> pastVariance,
-        Cf desired, float weight = 1f)
+        ReadOnlySpan<Complex32> window, ReadOnlySpan<Complex32> past, ReadOnlySpan<float> pastVariance,
+        Complex32 desired, float weight = 1f)
     {
         AddTrainingRow(window, past, desired, weight);
         for (int j = 0; j < _fb.Length; j++)
         {
-            _gram![_ff.Length + j, _ff.Length + j] += new Cf(weight * pastVariance[j], 0);
+            _gram![_ff.Length + j, _ff.Length + j] += new Complex32(weight * pastVariance[j], 0);
         }
     }
 
@@ -337,7 +336,7 @@ public sealed class Dfe
             float noiseDiag = ffNoisePower * _trainingWeightSum;
             for (int i = 0; i < _ff.Length; i++)
             {
-                _gram[i, i] += new Cf(noiseDiag, 0);
+                _gram[i, i] += new Complex32(noiseDiag, 0);
             }
         }
 
@@ -350,10 +349,10 @@ public sealed class Dfe
         float lambda = (float)(regularization * trace / n) + 1e-9f;
         for (int i = 0; i < n; i++)
         {
-            _gram[i, i] += new Cf(lambda, 0);
+            _gram[i, i] += new Complex32(lambda, 0);
             if (anchorToCurrentTaps)
             {
-                Cf current = i < _ff.Length ? _ff[i] : _fb[i - _ff.Length];
+                Complex32 current = i < _ff.Length ? _ff[i] : _fb[i - _ff.Length];
                 _rhs[i] += current * lambda;
             }
 
@@ -388,7 +387,7 @@ public sealed class Dfe
     /// c/g ratios, so their meaning is unchanged. <see cref="SseNull"/>/<see cref="SseTir"/>
     /// are the exact (unridged) residual sums for diagnostics.</summary>
     public readonly record struct TirSolve(
-        bool Solved, int Lag, Cf Coefficient, int Lag2, Cf Coefficient2, float SseNull, float SseTir);
+        bool Solved, int Lag, Complex32 Coefficient, int Lag2, Complex32 Coefficient2, float SseNull, float SseTir);
 
     /// <summary>Target-impulse-response (channel-shortening) variant of
     /// <see cref="SolveTraining"/> for the §B3.3 turbo re-solve. Rows must have been
@@ -422,7 +421,7 @@ public sealed class Dfe
         {
             _gram = null;
             _rhs = null;
-            return new TirSolve(false, 0, Cf.Zero, 0, Cf.Zero, 0f, 0f);
+            return new TirSolve(false, 0, Complex32.Zero, 0, Complex32.Zero, 0f, 0f);
         }
 
         int f = _ff.Length;
@@ -434,14 +433,14 @@ public sealed class Dfe
         {
             _gram = null;
             _rhs = null;
-            return new TirSolve(false, 0, Cf.Zero, 0, Cf.Zero, 0f, 0f);
+            return new TirSolve(false, 0, Complex32.Zero, 0, Complex32.Zero, 0f, 0f);
         }
 
         Array.Copy(_tirSol, _tirWin, f);
         int bestLag = 0;
-        var bestB = Cf.Zero;
+        var bestB = Complex32.Zero;
         float bestSse = float.MaxValue;
-        Span<Cf> t = stackalloc Cf[3];
+        Span<Complex32> t = stackalloc Complex32[3];
         int firstLag = onlyLag > 0 ? onlyLag : 1;
         int lastLag = onlyLag > 0 ? Math.Min(onlyLag, maxLag) : maxLag;
         for (int lag = firstLag; lag <= lastLag; lag++)
@@ -460,7 +459,7 @@ public sealed class Dfe
         float threshold = 4f * MathF.Log(Math.Max(2, onlyLag > 0 ? 1 : maxLag)) * sseNull / _trainingRows;
         bool accept = bestLag > 0 && bestSse < sseNull - threshold;
         int lag2 = 0;
-        var bestB2 = Cf.Zero;
+        var bestB2 = Complex32.Zero;
         if (accept && !allowPair)
         {
             // Pair candidates suppressed (§B3.3: label-trust gate - the demod's hard
@@ -506,7 +505,7 @@ public sealed class Dfe
             // Reinstate the null solution (the winner loop overwrote _tirWin).
             sseNull = SolveSubset(default, regularization, ffNoisePower, _tirWin);
             bestLag = 0;
-            bestB = Cf.Zero;
+            bestB = Complex32.Zero;
             bestSse = sseNull;
         }
 
@@ -516,14 +515,14 @@ public sealed class Dfe
         // a faded cursor path (the weak-cursor noise boost - measured 5.3× on the WN7
         // corpse). Rejected and echo-free frames never reach here. The monic solution
         // stands if the refit degenerates numerically.
-        var coeff = Cf.Zero;
-        var coeff2 = Cf.Zero;
+        var coeff = Complex32.Zero;
+        var coeff2 = Complex32.Zero;
         if (bestLag > 0)
         {
             // Monic coefficients sit on the SUBTRACTED side of the target
             // (ff·window ≈ x[u] − b·x[u−d]): post-FF echo = −b.
-            coeff = new Cf(-bestB.Re, -bestB.Im);
-            coeff2 = new Cf(-bestB2.Re, -bestB2.Im);
+            coeff = new Complex32(-bestB.Re, -bestB.Im);
+            coeff2 = new Complex32(-bestB2.Re, -bestB2.Im);
             if (PrepareFloatingTir(regularization, ffNoisePower))
             {
                 Span<int> idx = lag2 > 0 ? two : one[..1];
@@ -541,19 +540,19 @@ public sealed class Dfe
                 if (!float.IsNaN(fsse))
                 {
                     Array.Copy(_tirSol, _tirWin, f);
-                    Cf g = t[0];
-                    Cf c1 = lag2 > 0 ? t[1 + (lag2 < bestLag ? 1 : 0)] : t[1];
-                    Cf c2 = lag2 > 0 ? t[1 + (lag2 < bestLag ? 0 : 1)] : Cf.Zero;
+                    Complex32 g = t[0];
+                    Complex32 c1 = lag2 > 0 ? t[1 + (lag2 < bestLag ? 1 : 0)] : t[1];
+                    Complex32 c2 = lag2 > 0 ? t[1 + (lag2 < bestLag ? 0 : 1)] : Complex32.Zero;
 
                     // Floating coefficients sit on the TARGET side (ff·window ≈
                     // g·x[u] + c·x[u−d]): the relative echo is c/g - the same
                     // quantity the monic −b reports. A collapsed cursor gain (|g|²
                     // below gauge noise) reports the raw c; diagnostics only, the
                     // demod re-estimates the echo model by correlation either way.
-                    float gN = g.Cnorm();
+                    float gN = g.MagnitudeSquared();
                     if (gN >= 1e-4f)
                     {
-                        Cf invG = g.Conj() * (1f / gN);
+                        Complex32 invG = g.Conj() * (1f / gN);
                         coeff = c1 * invG;
                         coeff2 = c2 * invG;
                     }
@@ -583,13 +582,13 @@ public sealed class Dfe
     private bool PrepareFloatingTir(float regularization, float ffNoisePower)
     {
         int f = _ff.Length;
-        Cf[,] gram = _gram!;
-        Cf[] rhs = _rhs!;
+        Complex32[,] gram = _gram!;
+        Complex32[] rhs = _rhs!;
         for (int i = 0; i < f; i++)
         {
             for (int j = i; j < f; j++)
             {
-                Cf v = gram[i, j];
+                Complex32 v = gram[i, j];
                 _tirGram[i, j] = v;
                 if (j != i)
                 {
@@ -602,14 +601,14 @@ public sealed class Dfe
         double trace = 0;
         for (int i = 0; i < f; i++)
         {
-            _tirGram[i, i] += new Cf(noiseDiag, 0);
+            _tirGram[i, i] += new Complex32(noiseDiag, 0);
             trace += _tirGram[i, i].Re;
         }
 
         float lambda = (float)(regularization * trace / f) + 1e-9f;
         for (int i = 0; i < f; i++)
         {
-            _tirGram[i, i] += new Cf(lambda, 0);
+            _tirGram[i, i] += new Complex32(lambda, 0);
         }
 
         if (!CholeskyFactor(_tirGram, f))
@@ -636,13 +635,13 @@ public sealed class Dfe
     /// <paramref name="t"/>. Returns the exact unridged data residual
     /// Σw·‖targets·t − ff·window‖² (comparable with <see cref="SolveSubset"/>'s monic
     /// residuals - the null target is also unit-norm), or NaN if degenerate.</summary>
-    private float SolveFloatingCandidate(ReadOnlySpan<int> fbIndices, Cf[] sol, Span<Cf> t)
+    private float SolveFloatingCandidate(ReadOnlySpan<int> fbIndices, Complex32[] sol, Span<Complex32> t)
     {
         int f = _ff.Length;
         int k = fbIndices.Length;
         int m = 1 + k;
-        Cf[,] gram = _gram!;
-        Cf[] rhs = _rhs!;
+        Complex32[,] gram = _gram!;
+        Complex32[] rhs = _rhs!;
 
         // Fresh target columns through the shared FF factor: C_j = A⁻¹·(Wᴴ·P_j).
         for (int j = 0; j < k; j++)
@@ -659,23 +658,23 @@ public sealed class Dfe
         // D (target Gram) and R = D − BᴴA⁻¹B, m×m Hermitian in row-major 3×3 storage.
         // B's columns are read straight from the accumulation (b₀ = Wᴴx = rhs,
         // b_{1+j} = WᴴP_j = stored upper-triangle Gram entries).
-        Span<Cf> d = stackalloc Cf[9];
-        Span<Cf> r = stackalloc Cf[9];
+        Span<Complex32> d = stackalloc Complex32[9];
+        Span<Complex32> r = stackalloc Complex32[9];
         for (int a = 0; a < m; a++)
         {
             for (int b = a; b < m; b++)
             {
-                Cf dv = (a, b) switch
+                Complex32 dv = (a, b) switch
                 {
-                    (0, 0) => new Cf(_trainingTargetEnergy, 0),
+                    (0, 0) => new Complex32(_trainingTargetEnergy, 0),
                     (0, _) => rhs[f + fbIndices[b - 1]].Conj(),
                     _ => gram[f + fbIndices[a - 1], f + fbIndices[b - 1]],
                 };
-                var s = Cf.Zero;
-                Cf[] cb = _tirCols[b];
+                var s = Complex32.Zero;
+                Complex32[] cb = _tirCols[b];
                 for (int i = 0; i < f; i++)
                 {
-                    Cf ba = a == 0 ? rhs[i] : gram[i, f + fbIndices[a - 1]];
+                    Complex32 ba = a == 0 ? rhs[i] : gram[i, f + fbIndices[a - 1]];
                     s += ba.Conj() * cb[i];
                 }
 
@@ -699,9 +698,9 @@ public sealed class Dfe
         }
 
         float eps = (float)(1e-6 * tr / m) + 1e-12f;
-        Span<Cf> l = stackalloc Cf[9];
-        Span<Cf> y = stackalloc Cf[3];
-        Span<Cf> v = stackalloc Cf[3];
+        Span<Complex32> l = stackalloc Complex32[9];
+        Span<Complex32> y = stackalloc Complex32[3];
+        Span<Complex32> v = stackalloc Complex32[3];
         bool factored = false;
         for (int attempt = 0; attempt < 2 && !factored; attempt++, eps *= 100f)
         {
@@ -710,10 +709,10 @@ public sealed class Dfe
             {
                 for (int j = 0; j <= i; j++)
                 {
-                    Cf sum = r[(i * 3) + j];
+                    Complex32 sum = r[(i * 3) + j];
                     if (i == j)
                     {
-                        sum += new Cf(eps, 0);
+                        sum += new Complex32(eps, 0);
                     }
 
                     for (int c = 0; c < j; c++)
@@ -729,7 +728,7 @@ public sealed class Dfe
                             break;
                         }
 
-                        l[(i * 3) + i] = new Cf(MathF.Sqrt(sum.Re), 0);
+                        l[(i * 3) + i] = new Complex32(MathF.Sqrt(sum.Re), 0);
                     }
                     else
                     {
@@ -744,12 +743,12 @@ public sealed class Dfe
             return float.NaN;
         }
 
-        v[0] = new Cf(1f, 0f);
+        v[0] = new Complex32(1f, 0f);
         for (int iter = 0; iter < 3; iter++)
         {
             for (int i = 0; i < m; i++)
             {
-                Cf sum = v[i];
+                Complex32 sum = v[i];
                 for (int c = 0; c < i; c++)
                 {
                     sum -= l[(i * 3) + c] * y[c];
@@ -760,7 +759,7 @@ public sealed class Dfe
 
             for (int i = m - 1; i >= 0; i--)
             {
-                Cf sum = y[i];
+                Complex32 sum = y[i];
                 for (int c = i + 1; c < m; c++)
                 {
                     sum -= l[(c * 3) + i].Conj() * v[c];
@@ -772,7 +771,7 @@ public sealed class Dfe
             float nrm = 0f;
             for (int i = 0; i < m; i++)
             {
-                nrm += v[i].Cnorm();
+                nrm += v[i].MagnitudeSquared();
             }
 
             if (nrm <= 0f || !float.IsFinite(nrm))
@@ -791,13 +790,13 @@ public sealed class Dfe
         int big = 0;
         for (int i = 1; i < m; i++)
         {
-            if (v[i].Cnorm() > v[big].Cnorm())
+            if (v[i].MagnitudeSquared() > v[big].MagnitudeSquared())
             {
                 big = i;
             }
         }
 
-        Cf phase = v[big] * (1f / MathF.Sqrt(v[big].Cnorm()));
+        Complex32 phase = v[big] * (1f / MathF.Sqrt(v[big].MagnitudeSquared()));
         for (int i = 0; i < m; i++)
         {
             v[i] *= phase.Conj();
@@ -809,7 +808,7 @@ public sealed class Dfe
         // diagonal backed out, matching SolveSubset's convention).
         for (int i = 0; i < f; i++)
         {
-            Cf acc = v[0] * _tirCols[0][i];
+            Complex32 acc = v[0] * _tirCols[0][i];
             for (int j = 0; j < k; j++)
             {
                 acc += v[1 + j] * _tirCols[1 + j][i];
@@ -830,7 +829,7 @@ public sealed class Dfe
         double lin = 0;
         for (int i = 0; i < f; i++)
         {
-            Cf bt = rhs[i] * v[0];
+            Complex32 bt = rhs[i] * v[0];
             for (int j = 0; j < k; j++)
             {
                 bt += gram[i, f + fbIndices[j]] * v[1 + j];
@@ -842,7 +841,7 @@ public sealed class Dfe
         double quad = 0;
         for (int i = 0; i < f; i++)
         {
-            var acc = Cf.Zero;
+            var acc = Complex32.Zero;
             for (int j = 0; j < f; j++)
             {
                 acc += (j >= i ? gram[i, j] : gram[j, i].Conj()) * sol[j];
@@ -863,12 +862,12 @@ public sealed class Dfe
     /// ridge/anchor and genie noise-diagonal terms backed out), or NaN if the subset was
     /// degenerate. <paramref name="fbIndices"/> must be ascending (the index map must
     /// preserve order so only the stored upper triangle of the accumulation is read).</summary>
-    private float SolveSubset(ReadOnlySpan<int> fbIndices, float regularization, float ffNoisePower, Cf[] sol)
+    private float SolveSubset(ReadOnlySpan<int> fbIndices, float regularization, float ffNoisePower, Complex32[] sol)
     {
         int f = _ff.Length;
         int m = f + fbIndices.Length;
-        Cf[,] gram = _gram!;
-        Cf[] rhs = _rhs!;
+        Complex32[,] gram = _gram!;
+        Complex32[] rhs = _rhs!;
 
         // Subset copy (index map preserves order, so only the stored upper triangle of the
         // accumulation is read; the lower triangle is filled by conjugation here).
@@ -878,7 +877,7 @@ public sealed class Dfe
             for (int j = i; j < m; j++)
             {
                 int gj = j < f ? j : f + fbIndices[j - f];
-                Cf v = gram[gi, gj];
+                Complex32 v = gram[gi, gj];
                 _tirGram[i, j] = v;
                 if (j != i)
                 {
@@ -892,7 +891,7 @@ public sealed class Dfe
         {
             for (int i = 0; i < f; i++)
             {
-                _tirGram[i, i] += new Cf(noiseDiag, 0);
+                _tirGram[i, i] += new Complex32(noiseDiag, 0);
             }
         }
 
@@ -906,8 +905,8 @@ public sealed class Dfe
         for (int k = 0; k < m; k++)
         {
             int gk = k < f ? k : f + fbIndices[k - f];
-            Cf anchor = k < f ? _ff[k] : _fb[fbIndices[k - f]];
-            _tirGram[k, k] += new Cf(lambda, 0);
+            Complex32 anchor = k < f ? _ff[k] : _fb[fbIndices[k - f]];
+            _tirGram[k, k] += new Complex32(lambda, 0);
             _tirRhs[k] = rhs[gk] + (anchor * lambda);
         }
 
@@ -925,17 +924,17 @@ public sealed class Dfe
         {
             int gi = i < f ? i : f + fbIndices[i - f];
             lin += (sol[i].Conj() * rhs[gi]).Re;
-            var acc = Cf.Zero;
+            var acc = Complex32.Zero;
             for (int j = 0; j < m; j++)
             {
                 acc += _tirGram[i, j] * sol[j];
             }
 
             quad += (sol[i].Conj() * acc).Re;
-            nrm += sol[i].Cnorm();
+            nrm += sol[i].MagnitudeSquared();
             if (i < f)
             {
-                nrmFf += sol[i].Cnorm();
+                nrmFf += sol[i].MagnitudeSquared();
             }
         }
 
@@ -947,14 +946,14 @@ public sealed class Dfe
     /// block of the Hermitian positive-definite matrix into the preallocated lower-triangle
     /// scratch; returns false if not positive-definite. Every scratch entry is written
     /// before it is read, so no clearing between calls.</summary>
-    private bool CholeskyFactor(Cf[,] a, int n)
+    private bool CholeskyFactor(Complex32[,] a, int n)
     {
-        Cf[,] l = _cholL;
+        Complex32[,] l = _cholL;
         for (int i = 0; i < n; i++)
         {
             for (int j = 0; j <= i; j++)
             {
-                Cf sum = a[i, j];
+                Complex32 sum = a[i, j];
                 for (int k = 0; k < j; k++)
                 {
                     sum -= l[i, k] * l[j, k].Conj();
@@ -967,7 +966,7 @@ public sealed class Dfe
                         return false;
                     }
 
-                    l[i, j] = new Cf(MathF.Sqrt(sum.Re), 0);
+                    l[i, j] = new Complex32(MathF.Sqrt(sum.Re), 0);
                 }
                 else
                 {
@@ -983,13 +982,13 @@ public sealed class Dfe
     /// <summary>Solves L·Lᴴ·x = b (size <paramref name="n"/>) against the factor left by
     /// <see cref="CholeskyFactor"/>: forward substitution L y = b, then backward
     /// Lᴴ x = y.</summary>
-    private void CholeskySubstitute(Cf[] b, Cf[] x, int n)
+    private void CholeskySubstitute(Complex32[] b, Complex32[] x, int n)
     {
-        Cf[,] l = _cholL;
-        Cf[] y = _cholY;
+        Complex32[,] l = _cholL;
+        Complex32[] y = _cholY;
         for (int i = 0; i < n; i++)
         {
-            Cf sum = b[i];
+            Complex32 sum = b[i];
             for (int k = 0; k < i; k++)
             {
                 sum -= l[i, k] * y[k];
@@ -1000,7 +999,7 @@ public sealed class Dfe
 
         for (int i = n - 1; i >= 0; i--)
         {
-            Cf sum = y[i];
+            Complex32 sum = y[i];
             for (int k = i + 1; k < n; k++)
             {
                 sum -= l[k, i].Conj() * x[k];
@@ -1012,19 +1011,19 @@ public sealed class Dfe
 
     // ------------------------------------------------------------------ RLS tracking (Phase B)
 
-    private Cf[,]? _p;
+    private Complex32[,]? _p;
     private float _lambda;
-    private readonly Cf[] _pxScratch = new Cf[64];
+    private readonly Complex32[] _pxScratch = new Complex32[64];
 
     /// <summary>Initializes the RLS inverse-correlation matrix P as a scaled identity.
     /// Called after the acquisition batch-LS solve seeds the taps.</summary>
     public void BeginRls(float lambda, float pInit = 1.0f)
     {
         int n = _ff.Length + _fb.Length;
-        _p = new Cf[n, n];
+        _p = new Complex32[n, n];
         for (int i = 0; i < n; i++)
         {
-            _p[i, i] = new Cf(pInit, 0);
+            _p[i, i] = new Complex32(pInit, 0);
         }
 
         _lambda = lambda;
@@ -1042,14 +1041,14 @@ public sealed class Dfe
         }
 
         int n = _ff.Length + _fb.Length;
-        Cf[,] gram = _seedGram;
+        Complex32[,] gram = _seedGram;
         Array.Copy(_gram, gram, _gram.Length);
         if (ffNoisePower > 0)
         {
             float noiseDiag = ffNoisePower * _trainingWeightSum;
             for (int i = 0; i < _ff.Length; i++)
             {
-                gram[i, i] += new Cf(noiseDiag, 0);
+                gram[i, i] += new Complex32(noiseDiag, 0);
             }
         }
 
@@ -1062,7 +1061,7 @@ public sealed class Dfe
         float ridge = (float)(regularization * trace / n) + 1e-9f;
         for (int i = 0; i < n; i++)
         {
-            gram[i, i] += new Cf(ridge, 0);
+            gram[i, i] += new Complex32(ridge, 0);
             for (int j = 0; j < i; j++)
             {
                 gram[i, j] = gram[j, i].Conj();
@@ -1075,18 +1074,18 @@ public sealed class Dfe
         bool ok = CholeskyFactor(gram, n);
         if (ok)
         {
-            Cf[] e = _seedColumn;
+            Complex32[] e = _seedColumn;
             Array.Clear(e);
             for (int col = 0; col < n; col++)
             {
-                e[col] = new Cf(1, 0);
+                e[col] = new Complex32(1, 0);
                 CholeskySubstitute(e, _solution, n);
                 for (int row = 0; row < n; row++)
                 {
                     _p[row, col] = _solution[row];
                 }
 
-                e[col] = Cf.Zero;
+                e[col] = Complex32.Zero;
             }
         }
 
@@ -1096,7 +1095,7 @@ public sealed class Dfe
             {
                 for (int j = 0; j < n; j++)
                 {
-                    _p[i, j] = i == j ? new Cf(pFallback, 0) : Cf.Zero;
+                    _p[i, j] = i == j ? new Complex32(pFallback, 0) : Complex32.Zero;
                 }
             }
         }
@@ -1107,16 +1106,16 @@ public sealed class Dfe
     /// least-squares influence (probe rows authoritative, DD rows advisory) and enters the
     /// recursion consistently - gain denominator AND P update - as weighted RLS requires;
     /// see the derivation comment in the body.</summary>
-    public Cf RlsUpdate(ReadOnlySpan<Cf> window, ReadOnlySpan<Cf> past, Cf desired, float weight = 1f)
+    public Complex32 RlsUpdate(ReadOnlySpan<Complex32> window, ReadOnlySpan<Complex32> past, Complex32 desired, float weight = 1f)
     {
-        Cf y = Equalize(window, past);
+        Complex32 y = Equalize(window, past);
         if (_p is null)
         {
             return y;
         }
 
         int n = _ff.Length + _fb.Length;
-        Span<Cf> u = stackalloc Cf[n];
+        Span<Complex32> u = stackalloc Complex32[n];
         for (int i = 0; i < _ff.Length; i++)
         {
             u[i] = window[i];
@@ -1130,7 +1129,7 @@ public sealed class Dfe
         // px = P · u*
         for (int i = 0; i < n; i++)
         {
-            var acc = Cf.Zero;
+            var acc = Complex32.Zero;
             for (int j = 0; j < n; j++)
             {
                 acc += _p[i, j] * u[j].Conj();
@@ -1149,7 +1148,7 @@ public sealed class Dfe
         // consequence of the correct form: uniform weights cancel - all-0.1 rows adapt
         // exactly like all-1.0 rows once the P0 prior washes out, as scale invariance of
         // least squares demands. w = 1 reduces bit-identically to textbook RLS.
-        var uPx = Cf.Zero;
+        var uPx = Complex32.Zero;
         for (int j = 0; j < n; j++)
         {
             uPx += u[j] * _pxScratch[j]; // uᵀPu*: real-positive for Hermitian P
@@ -1163,8 +1162,8 @@ public sealed class Dfe
 
         float invDenom = 1f / denom;
 
-        Cf error = desired - y;
-        Cf scaledError = error * (weight * invDenom);
+        Complex32 error = desired - y;
+        Complex32 scaledError = error * (weight * invDenom);
         for (int i = 0; i < _ff.Length; i++)
         {
             _ff[i] += _pxScratch[i] * scaledError;
@@ -1179,7 +1178,7 @@ public sealed class Dfe
         float kScale = weight * invDenom;
         for (int i = 0; i < n; i++)
         {
-            Cf ki = _pxScratch[i] * kScale;
+            Complex32 ki = _pxScratch[i] * kScale;
             for (int j = 0; j < n; j++)
             {
                 _p[i, j] = (_p[i, j] - (ki * _pxScratch[j].Conj())) * invLambda;
@@ -1204,10 +1203,10 @@ public sealed class Dfe
         for (int i = 0; i < n; i++)
         {
             float diag = Math.Min(_p[i, i].Re, pMax);
-            _p[i, i] = new Cf(diag, 0);
+            _p[i, i] = new Complex32(diag, 0);
             for (int j = i + 1; j < n; j++)
             {
-                Cf avg = (_p[i, j] + _p[j, i].Conj()) * 0.5f;
+                Complex32 avg = (_p[i, j] + _p[j, i].Conj()) * 0.5f;
                 _p[i, j] = avg;
                 _p[j, i] = avg.Conj();
             }

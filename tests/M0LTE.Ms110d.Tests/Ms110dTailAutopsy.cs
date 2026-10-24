@@ -1,6 +1,5 @@
 using System.Globalization;
 using M0LTE.Fec;
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 using M0LTE.Ms110d.Fec;
 using M0LTE.HfChannel;
@@ -243,7 +242,7 @@ public class Ms110dTailAutopsy
             int i = symbolIndex++;
             if (i < refRing.Length)
             {
-                Cf p = qam16 ? Ms110dTables.Qam16[refRing[i]] : Ms110dTables.Psk8[refRing[i]];
+                Complex32 p = qam16 ? Ms110dTables.Qam16[refRing[i]] : Ms110dTables.Psk8[refRing[i]];
                 symbols.WriteLine($"{i},{y.Re:F5},{y.Im:F5},{refRing[i]},{p.Re:F5},{p.Im:F5}");
             }
             else
@@ -402,7 +401,7 @@ public class Ms110dTailAutopsy
         var truthBlockErrs = new List<string>();
         if (truth)
         {
-            IReadOnlyList<Cf[]> pathGains = channel.LastPathGains
+            IReadOnlyList<Complex32[]> pathGains = channel.PathGains()
                 ?? throw new InvalidOperationException("channel gains were not recorded");
 
             // W2 variants: V-offset shifts the truth lookup by a constant (the
@@ -581,12 +580,12 @@ public class Ms110dTailAutopsy
         {
             using var gainsOut = new StreamWriter(Path.Combine(outDir, $"autopsy-gains-{tag}.csv"));
             gainsOut.WriteLine("index,p0re,p0im,p1re,p1im");
-            IReadOnlyList<Cf[]> gains = channel.LastPathGains!;
+            IReadOnlyList<Complex32[]> gains = channel.PathGains()!;
             int count = Math.Max(gains[0].Length, gains[1].Length);
             for (int i = 0; i < count; i++)
             {
-                Cf g0 = gains[0][Math.Min(i, gains[0].Length - 1)];
-                Cf g1 = gains[1][Math.Min(i, gains[1].Length - 1)];
+                Complex32 g0 = gains[0][Math.Min(i, gains[0].Length - 1)];
+                Complex32 g1 = gains[1][Math.Min(i, gains[1].Length - 1)];
                 gainsOut.WriteLine($"{i},{g0.Re:F5},{g0.Im:F5},{g1.Re:F5},{g1.Im:F5}");
             }
         }
@@ -644,7 +643,7 @@ public class Ms110dTailAutopsy
     /// <summary>Truth-gain lookup at a fractional 96 Hz trajectory index - linear
     /// interpolation matching the channel's own gain application; endpoints clamped
     /// (only ever reached by lead-in/lead-out positions no data chip maps to).</summary>
-    private static Cf InterpGain(Cf[] trajectory, double x)
+    private static Complex32 InterpGain(Complex32[] trajectory, double x)
     {
         if (trajectory.Length == 1)
         {

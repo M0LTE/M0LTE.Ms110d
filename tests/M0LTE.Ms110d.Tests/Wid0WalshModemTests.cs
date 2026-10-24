@@ -1,5 +1,4 @@
 using M0LTE.Ms110d;
-using M0LTE.Ofdm;
 
 namespace M0LTE.Ms110d.Tests;
 
@@ -38,7 +37,7 @@ public class Wid0WalshModemTests
         var chips = new byte[bits.Length * 16];
         tx.Modulate(bits, chips);
 
-        var rxChips = new Cf[32];
+        var rxChips = new Complex32[32];
         var llrs = new float[2];
         for (int n = 0; n < bits.Length / 2; n++)
         {
@@ -47,7 +46,7 @@ public class Wid0WalshModemTests
                 rxChips[i] = Ms110dTables.Psk8[chips[(n * 32) + i]];
             }
 
-            rx.Demodulate(rxChips, llrs, out int best, out Cf corr);
+            rx.Demodulate(rxChips, llrs, out int best, out Complex32 corr);
             best.Should().Be((bits[2 * n] << 1) | bits[(2 * n) + 1]);
             (llrs[0] > 0 ? 0 : 1).Should().Be(bits[2 * n]);
             (llrs[1] > 0 ? 0 : 1).Should().Be(bits[(2 * n) + 1]);
@@ -71,7 +70,7 @@ public class Wid0WalshModemTests
 
         // The receiver descrambles with its own sequence; a matching Reset keeps it aligned.
         rx.Reset();
-        var rxChips = new Cf[32];
+        var rxChips = new Complex32[32];
         for (int i = 0; i < 32; i++)
         {
             rxChips[i] = Ms110dTables.Psk8[afterReset[i]];

@@ -53,7 +53,7 @@ public sealed record RefCase(
         }
     }
 
-    /// <summary>The transmit settings this case runs the library with .</summary>
+    /// <summary>The transmit settings this case runs the library with.</summary>
     public Ms110dTxSettings Settings => new()
     {
         WaveformNumber = WaveformNumber,

@@ -72,7 +72,27 @@ Each interleaver input block is encoded separately by the library's `TailBitingE
 - The register holds the K most recent input bits, newest in the least significant bit. It starts empty (all zero), is preloaded with the first K-1 input bits with no output, and then each of the N steps shifts in input bit `n` for n = K-1, K, ..., N-1 and then, wrapping, bits 0 to K-2 again (the same first K-1 bits, earliest first), emitting a T1/T2 pair at every step. So the encoder ends in the state it started in, and output pair i is the pair produced when input bit (i + K - 1) mod N enters the register.
 - Blocks are at least K bits long (all are).
 
-The puncture rule for the waveform's code rate is Table D-L; `03_punctured.bits` is the result. For each pair p of the (optionally repeated) stream, mask column `p mod columns` decides whether T1 and T2 of that pair are kept, T1 emitted first. Rates below 1/2 repeat each (T1,T2) pair adjacently by the repeat factor before masking. The masks are in `Ms110dPuncture.Get` and Table D-L, keyed by constraint length and the `code_rate` in the manifest.
+The puncture rule for the waveform's code rate is Table D-L; `03_punctured.bits` is the result. For each pair p of the (optionally repeated) stream, mask column `p mod columns` decides whether T1 and T2 of that pair are kept, T1 emitted first. Rates below 1/2 repeat each (T1,T2) pair adjacently by the repeat factor before masking. The masks below are those of `Ms110dPuncture.Get`, keyed by `code_rate` in the manifest (and by constraint length where K7 and K9 differ). Each is written as the T1 row over the T2 row, 1 = keep; "repeat" is the pair repeat factor applied before masking.
+
+| code_rate | repeat | K7 T1 / T2 | K9 T1 / T2 |
+| --- | --- | --- | --- |
+| 9/10 | 1 | `111101110` / `100010001` | `111000101` / `100111010` |
+| 8/9 | 1 | `11110100` / `10001011` | `11100000` / `10011111` |
+| 5/6 | 1 | `11010` / `10101` | `10110` / `11001` |
+| 4/5 | 1 | `1111` / `1000` | `1101` / `1010` |
+| 3/4 | 1 | `110` / `101` | `111` / `100` |
+| 2/3 | 1 | `11` / `10` | same |
+| 4/7 | 1 | `1111` / `0111` | same |
+| 9/16 | 1 | `111101111` / `111111011` | same |
+| 1/2 | 1 | `1` / `1` | same |
+| 2/5 | 2 | `1110` / `1010` | same |
+| 1/3 | 2 | `11` / `10` | same |
+| 2/7 | 2 | `1111` / `0111` | same |
+| 1/4 | 2 | `1` / `1` | same |
+| 1/6 | 3 | `1` / `1` | same |
+| 1/8 | 4 | `1` / `1` | same |
+| 1/12 | 6 | `1` / `1` | same |
+| 1/16 | 8 | `1` / `1` | same |
 
 ### Burst layout (09)
 
@@ -86,7 +106,7 @@ In WN0 manifests `frames_per_block` is 0 (there are no frames) and `walsh_symbol
 - The pulse length depends on the roll-off: 65 taps (16 symbols x 4 + 1) at 0.35 and wider, longer for narrower roll-offs (`Ms110dModulator.PulseSpanSymbols`; 0.10 gives 225).
 - Audio is baseband mixed up: `audio[i] = re[i] cos(2 pi 3 i / 16) - im[i] sin(2 pi 3 i / 16)` (1800 Hz at 9600 Hz), phase from sample 0 of the burst.
 - The tool checks that its own shaping and mixing reproduce `Modulate` bit for bit before it writes, so the three files are consistent with each other on the generating machine.
-- Tolerance for a port: compare audio and baseband with an absolute error of at most 1e-5 per sample. Samples are bounded by about +-1 (amplitude 0.5 by default), a float32 sum of the roughly 17 pulses overlapping any sample carries rounding error well under 1e-6 whatever the summation order, and 1e-5 (about -100 dB against full scale) leaves a tenfold margin without hiding any real fault. If the port computes its own pulse taps, compare them to `11_pulse.f32` at 1e-6 first. Every other file is exact.
+- Tolerance for a port: compare audio and baseband with an absolute error of at most 1e-5 per sample. Samples are well within +-1 (at the default amplitude of 0.5 the measured peak is about 0.47 in the baseband and about 0.44 in the final audio), a float32 sum of the roughly 17 pulses overlapping any sample carries rounding error well under 1e-6 whatever the summation order, and 1e-5 (about -100 dB against full scale) leaves a tenfold margin without hiding any real fault. If the port computes its own pulse taps, compare them to `11_pulse.f32` at 1e-6 first. Every other file is exact.
 
 ## What the tool uses
 

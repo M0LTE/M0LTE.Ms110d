@@ -1,4 +1,3 @@
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 
 namespace M0LTE.Ms110d.Tests;
@@ -14,11 +13,11 @@ namespace M0LTE.Ms110d.Tests;
 /// </summary>
 public class Ms110dChainBcjrTests
 {
-    private static readonly Cf[] Bpsk = [new(1, 0), new(-1, 0)];
+    private static readonly Complex32[] Bpsk = [new(1, 0), new(-1, 0)];
 
     // Descrambled-domain QPSK: dibit d → 8PSK ring index {0→0, 1→2, 3→4, 2→6}
     // (Table D-IV), i.e. points {1, +j, −1, −j} carry labels {0, 1, 3, 2}.
-    private static readonly Cf[] Qpsk = [new(1, 0), new(0, 1), new(-1, 0), new(0, -1)];
+    private static readonly Complex32[] Qpsk = [new(1, 0), new(0, 1), new(-1, 0), new(0, -1)];
     private static readonly byte[] QpskLabels = [0, 1, 3, 2];
 
     private static double Gaussian(Random random)
@@ -49,16 +48,16 @@ public class Ms110dChainBcjrTests
         const int n = 64;
         const float noiseVar = 0.05f;
         var random = new Random(52);
-        var rx = new Cf[n];
-        var h1 = new Cf[n];
-        var h2 = new Cf[n];
+        var rx = new Complex32[n];
+        var h1 = new Complex32[n];
+        var h2 = new Complex32[n];
         float sigma = MathF.Sqrt(noiseVar);
         for (int i = 0; i < n; i++)
         {
-            h1[i] = new Cf(1, 0);
-            h2[i] = Cf.Zero;
+            h1[i] = new Complex32(1, 0);
+            h2[i] = Complex32.Zero;
             float symbol = random.Next(2) == 0 ? 1f : -1f;
-            rx[i] = new Cf(
+            rx[i] = new Complex32(
                 symbol + (sigma * (float)Gaussian(random)),
                 sigma * (float)Gaussian(random));
         }
@@ -83,16 +82,16 @@ public class Ms110dChainBcjrTests
         const int n = 32;
         const float noiseVar = 0.05f;
         var random = new Random(53);
-        var rx = new Cf[n];
-        var h1 = new Cf[n];
-        var h2 = new Cf[n];
+        var rx = new Complex32[n];
+        var h1 = new Complex32[n];
+        var h2 = new Complex32[n];
         float sigma = MathF.Sqrt(noiseVar);
         for (int i = 0; i < n; i++)
         {
-            h1[i] = new Cf(1, 0);
-            h2[i] = Cf.Zero;
+            h1[i] = new Complex32(1, 0);
+            h2[i] = Complex32.Zero;
             float symbol = random.Next(2) == 0 ? 1f : -1f;
-            rx[i] = new Cf(
+            rx[i] = new Complex32(
                 symbol + (sigma * (float)Gaussian(random)),
                 sigma * (float)Gaussian(random));
         }
@@ -137,20 +136,20 @@ public class Ms110dChainBcjrTests
         const int delay = 2;
         const float noiseVar = 0.3f;
         var random = new Random(97);
-        var h1 = new Cf[n];
-        var h2 = new Cf[n];
-        var rx = new Cf[n];
+        var h1 = new Complex32[n];
+        var h2 = new Complex32[n];
+        var rx = new Complex32[n];
         var tx = new int[n];
-        Cf[] preceding = [Qpsk[2], Qpsk[1]]; // x[−2], x[−1]
+        Complex32[] preceding = [Qpsk[2], Qpsk[1]]; // x[−2], x[−1]
         float sigma = MathF.Sqrt(noiseVar);
         for (int i = 0; i < n; i++)
         {
-            h1[i] = new Cf(1f - (0.05f * i), 0.2f + (0.03f * i));
-            h2[i] = new Cf(0.5f, -0.25f + (0.04f * i));
+            h1[i] = new Complex32(1f - (0.05f * i), 0.2f + (0.03f * i));
+            h2[i] = new Complex32(0.5f, -0.25f + (0.04f * i));
             tx[i] = random.Next(4);
-            Cf echoSym = i >= delay ? Qpsk[tx[i - delay]] : preceding[i];
-            Cf signal = (h1[i] * Qpsk[tx[i]]) + (h2[i] * echoSym);
-            rx[i] = signal + new Cf(
+            Complex32 echoSym = i >= delay ? Qpsk[tx[i - delay]] : preceding[i];
+            Complex32 signal = (h1[i] * Qpsk[tx[i]]) + (h2[i] * echoSym);
+            rx[i] = signal + new Complex32(
                 sigma * (float)Gaussian(random), sigma * (float)Gaussian(random));
         }
 
@@ -175,9 +174,9 @@ public class Ms110dChainBcjrTests
             double logLik = 0;
             for (int i = 0; i < n; i++)
             {
-                Cf echoSym = i >= delay ? Qpsk[seq[i - delay]] : preceding[i];
-                Cf expected = (h1[i] * Qpsk[seq[i]]) + (h2[i] * echoSym);
-                logLik -= (rx[i] - expected).Cnorm() / (2.0 * noiseVar);
+                Complex32 echoSym = i >= delay ? Qpsk[seq[i - delay]] : preceding[i];
+                Complex32 expected = (h1[i] * Qpsk[seq[i]]) + (h2[i] * echoSym);
+                logLik -= (rx[i] - expected).MagnitudeSquared() / (2.0 * noiseVar);
             }
 
             for (int i = 0; i < n; i++)
@@ -222,16 +221,16 @@ public class Ms110dChainBcjrTests
             tx[i] = random.Next(2) == 0 ? 1f : -1f;
         }
 
-        var h1 = new Cf[n];
-        var h2 = new Cf[n];
-        var rx = new Cf[n];
+        var h1 = new Complex32[n];
+        var h2 = new Complex32[n];
+        var rx = new Complex32[n];
         float sigma = MathF.Sqrt(noiseVar);
         for (int i = 0; i < n; i++)
         {
-            h1[i] = new Cf(1, 0);
-            h2[i] = new Cf(h2Mag, 0);
+            h1[i] = new Complex32(1, 0);
+            h2[i] = new Complex32(h2Mag, 0);
             float signal = tx[i] + (i >= delay ? h2Mag * tx[i - delay] : 0f);
-            rx[i] = new Cf(
+            rx[i] = new Complex32(
                 signal + (sigma * (float)Gaussian(random)),
                 sigma * (float)Gaussian(random));
         }
@@ -276,16 +275,16 @@ public class Ms110dChainBcjrTests
             tx[i] = random.Next(2) == 0 ? 1f : -1f;
         }
 
-        var h1 = new Cf[n];
-        var h2 = new Cf[n];
-        var rx = new Cf[n];
+        var h1 = new Complex32[n];
+        var h2 = new Complex32[n];
+        var rx = new Complex32[n];
         float sigma = MathF.Sqrt(noiseVar);
         for (int i = 0; i < n; i++)
         {
-            h1[i] = new Cf(1, 0);
-            h2[i] = new Cf(h2Mag, 0);
+            h1[i] = new Complex32(1, 0);
+            h2[i] = new Complex32(h2Mag, 0);
             float signal = tx[i] + (i >= delay ? h2Mag * tx[i - delay] : 0f);
-            rx[i] = new Cf(
+            rx[i] = new Complex32(
                 signal + (sigma * (float)Gaussian(random)),
                 sigma * (float)Gaussian(random));
         }

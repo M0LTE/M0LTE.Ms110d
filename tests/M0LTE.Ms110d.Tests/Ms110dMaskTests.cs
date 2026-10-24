@@ -1,5 +1,4 @@
 using M0LTE.Fec;
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 using M0LTE.Ms110d.Fec;
 using M0LTE.HfChannel;
@@ -467,7 +466,7 @@ public class Ms110dMaskTests(ITestOutputHelper output)
             float[] rx = channel.Apply(
                 audio, snrDb, leadInSamples: 2400, leadOutSamples: 2400,
                 frequencyOffsetHz: frequencyOffsetHz);
-            IReadOnlyList<Cf[]>? gains = channel.LastPathGains;
+            IReadOnlyList<Complex32[]>? gains = channel.PathGains();
 
             byte[] txBits = Ms110dFraming.BuildTxBits(payload, appendEom: true, il.InputBits);
             int txBlocks = txBits.Length / il.InputBits;
@@ -641,12 +640,12 @@ public class Ms110dMaskTests(ITestOutputHelper output)
 
     /// <summary>Composite channel power (equal-power-normalized) at a gain-trajectory
     /// index; static paths contribute their constant unit gain.</summary>
-    private static double CompositeGain(IReadOnlyList<Cf[]> gains, int index)
+    private static double CompositeGain(IReadOnlyList<Complex32[]> gains, int index)
     {
         double sum = 0;
-        foreach (Cf[] path in gains)
+        foreach (Complex32[] path in gains)
         {
-            sum += path[Math.Min(index, path.Length - 1)].Cnorm();
+            sum += path[Math.Min(index, path.Length - 1)].MagnitudeSquared();
         }
 
         return sum / gains.Count;

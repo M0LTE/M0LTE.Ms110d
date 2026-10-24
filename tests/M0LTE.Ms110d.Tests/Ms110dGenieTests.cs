@@ -1,4 +1,3 @@
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 using M0LTE.HfChannel;
 
@@ -165,18 +164,19 @@ public class Ms110dGenieTests
         var channel = new WattersonChannel(9600, 45, WattersonChannel.Poor) { RecordGains = true };
         channel.Apply(audio, snrDb: 20);
 
-        channel.LastPathGains.Should().NotBeNull();
-        channel.LastPathGains!.Count.Should().Be(2, "Poor has two fading paths");
-        foreach (Cf[] trajectory in channel.LastPathGains)
+        var gains = channel.PathGains();
+        gains.Should().NotBeNull();
+        gains!.Count.Should().Be(2, "Poor has two fading paths");
+        foreach (Complex32[] trajectory in gains)
         {
             // ~96 Hz coverage of the burst span.
             trajectory.Length.Should().BeGreaterThan(
                 (int)(0.9 * audio.Length / 9600.0 * WattersonChannel.GainSampleRateHz));
 
             double meanSquare = 0;
-            foreach (Cf g in trajectory)
+            foreach (Complex32 g in trajectory)
             {
-                meanSquare += g.Cnorm();
+                meanSquare += g.MagnitudeSquared();
             }
 
             meanSquare /= trajectory.Length;

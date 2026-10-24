@@ -1,7 +1,6 @@
 using System.Globalization;
 using M0LTE.Dsp;
 using M0LTE.Fec;
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 using M0LTE.Ms110d.Fec;
 using M0LTE.HfChannel;
@@ -85,7 +84,7 @@ public class Ms110dMfbBound
         }
 
         float[] audio = tx.Modulate(payload);
-        Cf[] wireSymbols = tx.BuildSymbols(payload);
+        Complex32[] wireSymbols = tx.BuildSymbols(payload);
         int channelSeed = workerSeed + (1000 * burst) + 1;
         var noisy = new WattersonChannel(9600, channelSeed, WattersonChannel.Poor) { RecordGains = true };
         float[] rx = noisy.Apply(audio, snrDb, leadInSamples: 2400, leadOutSamples: 2400);
@@ -94,11 +93,11 @@ public class Ms110dMfbBound
         // identical gain realization (gains before noise) and skips the noise.
         var exact = new WattersonChannel(9600, channelSeed, WattersonChannel.Poor) { RecordGains = true };
         float[] noiseless = exact.Apply(audio, double.PositiveInfinity);
-        IReadOnlyList<Cf[]> gains = exact.LastPathGains!;
-        IReadOnlyList<Cf[]> gainsNoisy = noisy.LastPathGains!;
+        IReadOnlyList<Complex32[]> gains = exact.PathGains()!;
+        IReadOnlyList<Complex32[]> gainsNoisy = noisy.PathGains()!;
         for (int k = 0; k < gains.Count; k++)
         {
-            (gains[k][0] - gainsNoisy[k][0]).Cnorm().Should().Be(0f,
+            (gains[k][0] - gainsNoisy[k][0]).MagnitudeSquared().Should().Be(0f,
                 "the same-seed ∞-SNR channel must reproduce the identical gain draw");
         }
 
@@ -162,7 +161,7 @@ public class Ms110dMfbBound
         // W3: the working trajectory the receiver BELIEVES. Estimation error enters the
         // statistic honestly (the true signal leaks through the estimated basis as a
         // per-symbol 2×2 distortion; pricing uses the believed Gram).
-        Cf[][] estGains;
+        Complex32[][] estGains;
         double[] nmse = [0.0, 0.0];
         if (traj == "probes")
         {
@@ -172,20 +171,20 @@ public class Ms110dMfbBound
         else if (traj == "noise" && trajNoise > 0)
         {
             var perturb = new Random(channelSeed + 777);
-            estGains = new Cf[2][];
+            estGains = new Complex32[2][];
             for (int k = 0; k < 2; k++)
             {
                 double ms = 0;
-                foreach (Cf g in gains[k])
+                foreach (Complex32 g in gains[k])
                 {
-                    ms += g.Cnorm();
+                    ms += g.MagnitudeSquared();
                 }
 
                 float std = (float)(Math.Sqrt(ms / gains[k].Length) * trajNoise / Math.Sqrt(2.0));
-                estGains[k] = new Cf[gains[k].Length];
+                estGains[k] = new Complex32[gains[k].Length];
                 for (int i = 0; i < gains[k].Length; i++)
                 {
-                    estGains[k][i] = gains[k][i] + new Cf(
+                    estGains[k][i] = gains[k][i] + new Complex32(
                         (float)(std * Gaussian(perturb)), (float)(std * Gaussian(perturb)));
                 }
             }
@@ -204,9 +203,9 @@ public class Ms110dMfbBound
                 (preambleLen + k32 + (txBlocks * il.Frames * (u256 + k32))) * 4 / 100);
             for (int i = lo; i < hi; i++)
             {
-                Cf e = InterpGain(estGains[k], i) - gains[k][i];
-                err += e.Cnorm();
-                pow += gains[k][i].Cnorm();
+                Complex32 e = InterpGain(estGains[k], i) - gains[k][i];
+                err += e.MagnitudeSquared();
+                pow += gains[k][i].MagnitudeSquared();
             }
 
             nmse[k] = err / Math.Max(pow, 1e-12);
@@ -258,23 +257,23 @@ public class Ms110dMfbBound
                         | (fetched[bit + 2] << 1) | fetched[bit + 3];
                     int nib = scrambleNibbles[(f * u256) + u];
                     int sym = DataIndex(b, f, u);
-                    Cf wire = Ms110dTables.Qam16[number ^ nib];
-                    (wireSymbols[sym] - wire).Cnorm().Should().Be(0f,
+                    Complex32 wire = Ms110dTables.Qam16[number ^ nib];
+                    (wireSymbols[sym] - wire).MagnitudeSquared().Should().Be(0f,
                         "the data-index layout must match the modulator's wire stream");
 
-                    (Cf y, float m11, float m12, float m22) =
+                    (Complex32 y, float m11, float m12, float m22) =
                         Project(r, wire, sym, pulses, gains, estGains, pathScale);
 
                     // Predicted vs measured statistic-noise check (lane iii).
                     float det = (m11 * m22) - (m12 * m12);
                     predSum += sigma2 * (m11 + m22) / Math.Max(det, 1e-12f);
-                    measSum += (y - wire).Cnorm();
+                    measSum += (y - wire).MagnitudeSquared();
 
                     int best = 0;
                     float bestMetric = float.MaxValue;
                     for (int cand = 0; cand < 16; cand++)
                     {
-                        Cf d = y - Ms110dTables.Qam16[cand ^ nib];
+                        Complex32 d = y - Ms110dTables.Qam16[cand ^ nib];
                         // Mahalanobis under noise covariance σ²·M⁻¹: dᵀ·M·d / 2σ².
                         float q = (m11 * d.Re * d.Re) + (2f * m12 * d.Re * d.Im)
                             + (m22 * d.Im * d.Im);
@@ -339,8 +338,8 @@ public class Ms110dMfbBound
     }
 
     private static void AddSymbol(
-        float[] output, Cf symbol, int symbolIndex,
-        (float[] Taps, int First)[] pulses, IReadOnlyList<Cf[]> gains, float pathScale)
+        float[] output, Complex32 symbol, int symbolIndex,
+        (float[] Taps, int First)[] pulses, IReadOnlyList<Complex32[]> gains, float pathScale)
     {
         int basePos = symbolIndex * 4;
         for (int k = 0; k < pulses.Length; k++)
@@ -354,8 +353,8 @@ public class Ms110dMfbBound
                     continue;
                 }
 
-                Cf g = InterpGain(gains[k], i / 100.0);
-                Cf env = symbol * (taps[m] * pathScale) * g;
+                Complex32 g = InterpGain(gains[k], i / 100.0);
+                Complex32 env = symbol * (taps[m] * pathScale) * g;
                 double phase = 2.0 * Math.PI * 3.0 * i / 16.0;
                 output[i] += (float)((env.Re * Math.Cos(phase)) - (env.Im * Math.Sin(phase)));
             }
@@ -368,9 +367,9 @@ public class Ms110dMfbBound
     /// 2×2 distortion T - ŷ = T·x + M̂⁻¹·⟨r, ê⟩ - while pricing uses the believed Gram
     /// M̂ (noise covariance σ²·M̂⁻¹). With estGains ≡ gains, T = I exactly and this is
     /// the banked W1b matched-filter statistic.</summary>
-    private static (Cf Y, float M11, float M12, float M22) Project(
-        float[] r, Cf truth, int symbolIndex,
-        (float[] Taps, int First)[] pulses, IReadOnlyList<Cf[]> gains, Cf[][] estGains,
+    private static (Complex32 Y, float M11, float M12, float M22) Project(
+        float[] r, Complex32 truth, int symbolIndex,
+        (float[] Taps, int First)[] pulses, IReadOnlyList<Complex32[]> gains, Complex32[][] estGains,
         float pathScale)
     {
         int basePos = symbolIndex * 4;
@@ -387,8 +386,8 @@ public class Ms110dMfbBound
                 continue;
             }
 
-            var cTrue = Cf.Zero;
-            var cEst = Cf.Zero;
+            var cTrue = Complex32.Zero;
+            var cEst = Complex32.Zero;
             for (int k = 0; k < pulses.Length; k++)
             {
                 int t = m - pulses[k].First;
@@ -427,7 +426,7 @@ public class Ms110dMfbBound
         double n2 = ((m11 * v2) - (m12 * v1)) / det;
         double y1 = (t11 * truth.Re) + (t12 * truth.Im) + n1;
         double y2 = (t21 * truth.Re) + (t22 * truth.Im) + n2;
-        return (new Cf((float)y1, (float)y2), (float)m11, (float)m12, (float)m22);
+        return (new Complex32((float)y1, (float)y2), (float)m11, (float)m12, (float)m22);
     }
 
     /// <summary>Label-free probe-anchor trajectory estimate: per probe, a 4-real-unknown
@@ -435,13 +434,13 @@ public class Ms110dMfbBound
     /// the probe start, so no data pulse - direct or delayed - reaches a row; the gains
     /// are ~constant over the 3.3 ms window), linearly interpolated between probe
     /// centres onto the 96 Hz grid. Sees only rx and the known probe chips.</summary>
-    private static Cf[][] EstimateFromProbes(
-        float[] rx, Cf[] wireSymbols, int preambleLen, int u, int k32, int framesTotal,
+    private static Complex32[][] EstimateFromProbes(
+        float[] rx, Complex32[] wireSymbols, int preambleLen, int u, int k32, int framesTotal,
         (float[] Taps, int First)[] pulses, float pathScale, int envLength)
     {
         int gridLength = ((envLength - 1) / 100) + 1;
         var anchorX = new List<double>();
-        var anchorG = new List<Cf[]>();
+        var anchorG = new List<Complex32[]>();
         Span<double> a = stackalloc double[16];
         Span<double> b = stackalloc double[4];
         Span<double> f = stackalloc double[4];
@@ -459,8 +458,8 @@ public class Ms110dMfbBound
             b.Clear();
             for (int t = rowLo; t < rowHi; t++)
             {
-                var c1 = Cf.Zero;
-                var c2 = Cf.Zero;
+                var c1 = Complex32.Zero;
+                var c2 = Complex32.Zero;
                 for (int c = s; c < s + k32; c++)
                 {
                     int m = t - (4 * c);
@@ -469,7 +468,7 @@ public class Ms110dMfbBound
                         int tap = m - pulses[k].First;
                         if (tap >= 0 && tap < pulses[k].Taps.Length)
                         {
-                            Cf add = wireSymbols[c] * (pulses[k].Taps[tap] * pathScale);
+                            Complex32 add = wireSymbols[c] * (pulses[k].Taps[tap] * pathScale);
                             if (k == 0)
                             {
                                 c1 += add;
@@ -506,13 +505,13 @@ public class Ms110dMfbBound
             }
 
             anchorX.Add((rowLo + rowHi) / 2.0 / 100.0);
-            anchorG.Add([new Cf((float)b[0], (float)b[1]), new Cf((float)b[2], (float)b[3])]);
+            anchorG.Add([new Complex32((float)b[0], (float)b[1]), new Complex32((float)b[2], (float)b[3])]);
         }
 
-        var est = new Cf[2][];
+        var est = new Complex32[2][];
         for (int k = 0; k < 2; k++)
         {
-            est[k] = new Cf[gridLength];
+            est[k] = new Complex32[gridLength];
             for (int i = 0; i < gridLength; i++)
             {
                 double x = i;
@@ -597,7 +596,7 @@ public class Ms110dMfbBound
         return Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
     }
 
-    private static Cf InterpGain(Cf[] trajectory, double x)
+    private static Complex32 InterpGain(Complex32[] trajectory, double x)
     {
         if (trajectory.Length == 1)
         {

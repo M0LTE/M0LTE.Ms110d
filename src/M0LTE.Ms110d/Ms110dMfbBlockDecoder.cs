@@ -1,6 +1,5 @@
 using System.Numerics;
 using M0LTE.Fec;
-using M0LTE.Ofdm;
 using M0LTE.Ms110d.Fec;
 
 namespace M0LTE.Ms110d;
@@ -208,7 +207,7 @@ internal sealed class Ms110dMfbBlockDecoder
 
     private Complex Wire(int number, int u)
     {
-        Cf w = _qam
+        Complex32 w = _qam
             ? Ms110dTables.Qam16[number ^ _scr[u]]
             : Ms110dTables.Psk8[(_transcode8[number] + _scr[u]) & 7];
         return new Complex(w.Re, w.Im);
@@ -216,7 +215,7 @@ internal sealed class Ms110dMfbBlockDecoder
 
     private Complex Point(int q)
     {
-        Cf w = _qam ? Ms110dTables.Qam16[q] : Ms110dTables.Psk8[q];
+        Complex32 w = _qam ? Ms110dTables.Qam16[q] : Ms110dTables.Psk8[q];
         return new Complex(w.Re, w.Im);
     }
 
@@ -293,7 +292,7 @@ internal sealed class Ms110dMfbBlockDecoder
         _firstBlock = demod.BlockIndex == 0;
         for (long hc = hc0; hc < hcEnd; hc++)
         {
-            Cf v = demod.RingReadT2(hc);
+            Complex32 v = demod.RingReadT2(hc);
             _ring[hc - hc0] = new Complex(v.Re, v.Im);
         }
 
@@ -324,7 +323,7 @@ internal sealed class Ms110dMfbBlockDecoder
         {
             bool preceding = p < frames;
             long ps = preceding ? frameChips[p] - k : frameChips[frames - 1] + u;
-            Cf[] probe = MiniProbe.Get(k, ProbeIsBoundary(p, frames));
+            Complex32[] probe = MiniProbe.Get(k, ProbeIsBoundary(p, frames));
             ClearNormal(WinLen);
             long rowLo = (2 * ps) + lMax;
             long rowHi = (2 * (ps + k)) + lMin;
@@ -339,7 +338,7 @@ internal sealed class Ms110dMfbBlockDecoder
                         continue;
                     }
 
-                    Cf x = probe[(src / 2) - ps];
+                    Complex32 x = probe[(src / 2) - ps];
                     _phiRow[i] = new Complex(x.Re, x.Im);
                 }
 
@@ -364,7 +363,7 @@ internal sealed class Ms110dMfbBlockDecoder
                             continue;
                         }
 
-                        Cf x = probe[(src / 2) - ps];
+                        Complex32 x = probe[(src / 2) - ps];
                         model += _rhs[i] * new Complex(x.Re, x.Im);
                     }
 
@@ -605,7 +604,7 @@ internal sealed class Ms110dMfbBlockDecoder
         for (int p = 0; p < scanProbes; p++)
         {
             long ps = frameChips[p] - k;
-            Cf[] probe = MiniProbe.Get(k, ProbeIsBoundary(p, _il.Frames));
+            Complex32[] probe = MiniProbe.Get(k, ProbeIsBoundary(p, _il.Frames));
             Array.Clear(rhs);
             for (int i = 0; i < ScanLen; i++)
             {
@@ -626,7 +625,7 @@ internal sealed class Ms110dMfbBlockDecoder
                         continue;
                     }
 
-                    Cf x = probe[(src / 2) - ps];
+                    Complex32 x = probe[(src / 2) - ps];
                     phi[i] = new Complex(x.Re, x.Im);
                 }
 
@@ -841,7 +840,7 @@ internal sealed class Ms110dMfbBlockDecoder
         {
             bool preceding = p < frames;
             long ps = preceding ? frameChips[p] - k : frameChips[frames - 1] + u;
-            Cf[] probe = MiniProbe.Get(k, ProbeIsBoundary(p, frames));
+            Complex32[] probe = MiniProbe.Get(k, ProbeIsBoundary(p, frames));
             for (int c = 0; c < k; c++)
             {
                 AddChip(ps + c, new Complex(probe[c].Re, probe[c].Im));
