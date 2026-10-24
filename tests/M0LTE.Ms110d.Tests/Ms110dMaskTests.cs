@@ -161,6 +161,7 @@ public class Ms110dMaskTests(ITestOutputHelper output)
         long targetBits = Environment.GetEnvironmentVariable("MS110D_MASK_BITS") is null && wn is 2 or 5 or 6
             ? 6_000_000 : TargetBits();
 
+        snrDb += double.TryParse(Environment.GetEnvironmentVariable("MS110D_MASK_SNR_DELTA"), out double poorDelta) ? poorDelta : 0;
         MaskRun run = RunPoint(wn, snrDb, WattersonChannel.Poor, targetBits, seed: 500 + wn + SeedOffset(),
             minSimSeconds: 600);
         Report($"POOR WN{wn} @ {snrDb:+0;-0;0} dB{SeedTag()}", run);
@@ -464,7 +465,10 @@ public class Ms110dMaskTests(ITestOutputHelper output)
             "burst,channelSeed,bits,decoded,errors,firstErr,lastErr,collapses," +
             "uncodedErrs,deepFadeErrs,turboC,turboR,turboA,turboS,reason");
 
-        while (bits < targetBits || simSeconds < minSimSeconds)
+        // MS110D_MASK_BURSTS=N: N bursts in total (split over the workers) instead of a bit budget.
+        int fixedBursts = int.TryParse(Environment.GetEnvironmentVariable("MS110D_MASK_BURSTS"), out int nb)
+            ? (nb + Workers() - 1) / Workers() : 0;
+        while (fixedBursts > 0 ? bursts < fixedBursts : (bits < targetBits || simSeconds < minSimSeconds))
         {
             long uncodedErrsBefore = uncodedErrors;
             long deepFadeErrsBefore = deepFadeErrors;

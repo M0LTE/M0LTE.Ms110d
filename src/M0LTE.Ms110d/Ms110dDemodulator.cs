@@ -1604,7 +1604,7 @@ public sealed class Ms110dDemodulator
     /// (the one after frame <paramref name="frameNumber"/>): each is run through the equalizer with
     /// its own probe as the feedback history and compared with its own probe, so the wrong one
     /// shows up as a large residual. Returns (mseCurrent - mseStandard) / (sum), in [-1, 1],
-    /// positive when the standard pattern fits better. Read-only on the equalizer; one extra
+    /// positive when the standard pattern fits better, 0 when neither fits (a fade). Read-only on the equalizer; one extra
     /// probe-length pass, and only at probes where the rules disagree and the burst has not
     /// yet settled.</summary>
     private double ScoreProbePatterns(long probeChip, long frameNumber)
@@ -1629,6 +1629,15 @@ public sealed class Ms110dDemodulator
 
             mseCurrent += (dfe.Equalize(window, pastCurrent) - current[i]).MagnitudeSquared();
             mseStandard += (dfe.Equalize(window, pastStandard) - standard[i]).MagnitudeSquared();
+        }
+
+        // A faded or noisy probe fits neither hypothesis (the equalizer output is near zero, so
+        // each residual is about the probe's own energy): it says nothing, and must not tip the
+        // sum. A probe that fits one hypothesis leaves at most a small fraction of unit energy.
+        double rows = mode.K - dfe.FbTaps;
+        if (Math.Min(mseCurrent, mseStandard) > 0.5 * rows)
+        {
+            return 0;
         }
 
         double total = mseCurrent + mseStandard;

@@ -18,15 +18,22 @@ namespace M0LTE.Ms110d;
 /// the two disagree only at probes the current rule shifts and the standard rule does not,
 /// and never at all for the Long interleaver (F == L). At a disagreeing probe the receiver
 /// scores both hypotheses against the received probe (<see cref="AddEvidence"/>), and
-/// follows the accumulated evidence; once it is conclusive the choice is locked for the
-/// burst and no further scoring is done. Until evidence exists the current rule applies,
-/// which is bit-for-bit what the receiver did before.
+/// follows the accumulated evidence. The current rule applies until the standard pattern is
+/// CLEARLY PROVEN (the summed score reaches +<see cref="SwitchEvidence"/>, about one decisive probe), never on a provisional sign,
+/// so a burst sent with the current pattern is decoded exactly as before however noisy or
+/// faded its probes are; at -<see cref="LockEvidence"/> the current rule is confirmed and
+/// scoring stops.
 /// </remarks>
 internal sealed class ProbePattern
 {
     // Each score is in [-1, 1] (1 = the standard hypothesis fits the probe perfectly and the
     // current one not at all), so 3 means a few probes agreeing clearly.
     private const double LockEvidence = 3.0;
+
+    // The standard pattern is followed once the summed score is clearly positive: one
+    // decisive probe (scores of real probes were 0.54 to 0.99 for the right hypothesis), never
+    // a provisional sign. Faded probes score 0 and so never move the sum.
+    private const double SwitchEvidence = 0.5;
 
     private int _frames = 1;
     private int _longFrames = 1;
@@ -46,7 +53,11 @@ internal sealed class ProbePattern
     {
         _evidence = 0;
         _locked = false;
+        Scored = 0;
     }
+
+    /// <summary>How many probes have been scored this burst (diagnostic).</summary>
+    internal int Scored { get; private set; }
 
     /// <summary>The evidence is conclusive and no more probes are scored.</summary>
     public bool Locked => _locked;
@@ -71,12 +82,13 @@ internal sealed class ProbePattern
     {
         bool current = Current(g);
         bool standard = Standard(g);
-        return current == standard ? current : (_evidence > 0 ? standard : current);
+        return current == standard ? current : (_evidence >= SwitchEvidence ? standard : current);
     }
 
     /// <summary>Adds one probe's score: positive when the standard hypothesis fits better.</summary>
     public void AddEvidence(double score)
     {
+        Scored++;
         _evidence += score;
         if (Math.Abs(_evidence) >= LockEvidence)
         {

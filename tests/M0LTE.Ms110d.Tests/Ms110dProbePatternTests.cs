@@ -8,7 +8,7 @@ namespace M0LTE.Ms110d.Tests;
 /// D.5.2.2 one (shifted only at the Long interleaver's boundary). The standard pattern is
 /// produced here through the modulator's internal test switch; the default stays the old one.
 /// </summary>
-public class Ms110dProbePatternTests
+public class Ms110dProbePatternTests(ITestOutputHelper output)
 {
     private static readonly int[] Waveforms = [1, 2, 3, 4, 5, 6, 7, 8, 13];
 
@@ -114,7 +114,7 @@ public class Ms110dProbePatternTests
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, kind);
         foreach (bool standard in new[] { false, true })
         {
-            byte[] payload = RandomBits((4 * il.InputBits) - 32 - 8, 7100 + wn);
+            byte[] payload = RandomBits((6 * il.InputBits) - 32 - 8, 7100 + wn);
             float[] audio = Transmit(wn, kind, standard, payload, awgn: true, seed: 5);
 
             // Stop before the last block completes: the end of a burst resets the receiver's
@@ -129,6 +129,42 @@ public class Ms110dProbePatternTests
             long g = il.Frames - 2 >= 0 && kind != Ms110dInterleaverKind.UltraShort ? il.Frames - 2 : 0;
             demod.ProbePatternForBlocks.Boundary(g).Should().Be(
                 !standard, "the receiver follows the pattern the probes were sent with");
+            output.WriteLine($"WN{wn} {kind} standard={standard}: {demod.ProbePatternForBlocks.Scored} probes scored, locked={demod.ProbePatternForBlocks.Locked}");
+        }
+    }
+
+    [Theory]
+    [InlineData(6, Ms110dInterleaverKind.Short, 14)]
+    [InlineData(6, Ms110dInterleaverKind.Short, 11)]
+    [InlineData(13, Ms110dInterleaverKind.Short, 5)]
+    [InlineData(13, Ms110dInterleaverKind.Short, 8)]
+    [InlineData(3, Ms110dInterleaverKind.UltraShort, 7)]
+    public void Faded_Current_Pattern_Bursts_Never_Leave_The_Current_Pattern(
+        int wn, Ms110dInterleaverKind kind, double snrDb)
+    {
+        Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, kind);
+        Ms110dMode mode = Ms110dMode.Mode3k(wn);
+        for (int seed = 1; seed <= 8; seed++)
+        {
+            var tx = new Ms110dModulator(new Ms110dTxSettings { WaveformNumber = wn, Interleaver = kind });
+            byte[] payload = RandomBits((20 * il.InputBits) - 32 - 8, 8000 + seed);
+            float[] audio = new WattersonChannel(9600, 900 + seed, WattersonChannel.Poor)
+                .Apply(tx.Modulate(payload), snrDb, leadInSamples: 1500, leadOutSamples: 4000);
+
+            // Stop before the last block completes (the end of a burst resets the pattern).
+            int lastBlockSamples = il.Frames * (mode.U + mode.K) * 4;
+            var demod = new Ms110dDemodulator();
+            demod.Process(new float[1500]);
+            demod.Process(audio.AsSpan(0, audio.Length - 4000 - lastBlockSamples - 400).ToArray());
+
+            for (long g = 0; g < 20L * il.Frames; g++)
+            {
+                if (ProbePattern.CurrentRule(g, il.Frames))
+                {
+                    demod.ProbePatternForBlocks.Boundary(g).Should().BeTrue(
+                        $"a faded current-pattern burst (seed {seed}) must stay on the current pattern at frame {g}");
+                }
+            }
         }
     }
 
