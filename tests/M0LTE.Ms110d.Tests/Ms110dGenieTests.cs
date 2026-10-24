@@ -176,7 +176,7 @@ public class Ms110dGenieTests
             double meanSquare = 0;
             foreach (Complex32 g in trajectory)
             {
-                meanSquare += g.Cnorm();
+                meanSquare += g.MagnitudeSquared();
             }
 
             meanSquare /= trajectory.Length;

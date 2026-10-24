@@ -53,7 +53,7 @@ internal static class Ms110dBcjr
                     float xDelayed = GetDelayedSymbol(s, l, delay);
                     Complex32 yExp = h1[t] * xN + h2[t] * xDelayed;
                     Complex32 diff = rx[t] - yExp;
-                    float gamma = -diff.Cnorm() * invTwoSigma2;
+                    float gamma = -diff.MagnitudeSquared() * invTwoSigma2;
                     int nextState = ((s << 1) | b) & (nStates - 1);
                     float val = alpha + gamma;
                     if (val > logAlpha[baseNext + nextState])
@@ -81,7 +81,7 @@ internal static class Ms110dBcjr
                     float xDelayed = GetDelayedSymbol(s, l, delay);
                     Complex32 yExp = h1[t] * xN + h2[t] * xDelayed;
                     Complex32 diff = rx[t] - yExp;
-                    float gamma = -diff.Cnorm() * invTwoSigma2;
+                    float gamma = -diff.MagnitudeSquared() * invTwoSigma2;
                     int nextState = ((s << 1) | b) & (nStates - 1);
                     float val = logBeta[baseNext + nextState] + gamma;
                     if (val > best) best = val;
@@ -110,7 +110,7 @@ internal static class Ms110dBcjr
                     float xDelayed = GetDelayedSymbol(s, l, delay);
                     Complex32 yExp = h1[t] * xN + h2[t] * xDelayed;
                     Complex32 diff = rx[t] - yExp;
-                    float gamma = -diff.Cnorm() * invTwoSigma2;
+                    float gamma = -diff.MagnitudeSquared() * invTwoSigma2;
                     int nextState = ((s << 1) | b) & (nStates - 1);
                     float val = alpha + gamma + logBeta[baseNext + nextState];
 

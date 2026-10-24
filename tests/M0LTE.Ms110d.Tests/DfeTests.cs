@@ -74,7 +74,7 @@ public class DfeTests
             dfe.BeginRls(lambda: 0.95f, pInit: 1.0f);
             for (int i = 1; i < 400; i++)
             {
-                Complex32 gain = Complex32.Cmplx(0.01f * i);
+                Complex32 gain = Complex32.FromPhase(0.01f * i);
                 Update(dfe, symbols[i], symbols[i - 1], gain * symbols[i], weights[run]);
             }
 
@@ -125,7 +125,7 @@ public class DfeTests
         // far worse through fade swings - which is exactly why the phase ramp exists.
         Complex32[] start = [new(1f, 0f), new(0.3f, -0.7f)];
         const float phi = 1.2f; // ~69°, a fade-swing-scale rotation
-        Complex32 rotor = Complex32.Cmplx(phi);
+        Complex32 rotor = Complex32.FromPhase(phi);
         // The caller hands TapTrajectory the END taps DE-rotated by φ - for a pure
         // rotation that is the start taps again.
         var trajectory = new Complex32[2];
@@ -229,7 +229,7 @@ public class DfeTests
 
         tir.Solved.Should().BeTrue();
         tir.Lag.Should().Be(5, "the designed echo lag must win the candidate search");
-        Math.Sqrt(tir.Coefficient.Cnorm()).Should().BeApproximately(0.8, 0.05,
+        Math.Sqrt(tir.Coefficient.MagnitudeSquared()).Should().BeApproximately(0.8, 0.05,
             "the post-FF echo coefficient is the channel's echo gain");
         tir.SseTir.Should().BeLessThan(0.2f * tir.SseNull,
             "shortening must beat the truncated-IIR inversion decisively");
@@ -293,8 +293,8 @@ public class DfeTests
         tir.Solved.Should().BeTrue();
         tir.Lag.Should().Be(5, "the dominant tap wins the single-lag search");
         tir.Lag2.Should().Be(6, "the straddle neighbour must be detected as the second tap");
-        Math.Sqrt(tir.Coefficient.Cnorm()).Should().BeApproximately(0.7, 0.05);
-        Math.Sqrt(tir.Coefficient2.Cnorm()).Should().BeApproximately(0.35, 0.05);
+        Math.Sqrt(tir.Coefficient.MagnitudeSquared()).Should().BeApproximately(0.7, 0.05);
+        Math.Sqrt(tir.Coefficient2.MagnitudeSquared()).Should().BeApproximately(0.35, 0.05);
     }
 
     [Fact]
@@ -310,7 +310,7 @@ public class DfeTests
 
         tir.Solved.Should().BeTrue();
         tir.Lag.Should().Be(5, "the echo is real and must be established by the monic evidence");
-        Math.Sqrt(tir.Coefficient.Cnorm()).Should().BeApproximately(1.0 / 0.3, 0.4,
+        Math.Sqrt(tir.Coefficient.MagnitudeSquared()).Should().BeApproximately(1.0 / 0.3, 0.4,
             "the floating refit reports the echo relative to the true faded cursor");
         dfe.FfEnergy.Should().BeLessThan(3f,
             "the unit-norm target must not boost the FF toward inverting the 0.3 cursor");

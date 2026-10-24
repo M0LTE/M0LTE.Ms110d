@@ -106,7 +106,7 @@ In WN0 manifests `frames_per_block` is 0 (there are no frames) and `walsh_symbol
 - The pulse length depends on the roll-off: 65 taps (16 symbols x 4 + 1) at 0.35 and wider, longer for narrower roll-offs (`Ms110dModulator.PulseSpanSymbols`; 0.10 gives 225).
 - Audio is baseband mixed up: `audio[i] = re[i] cos(2 pi 3 i / 16) - im[i] sin(2 pi 3 i / 16)` (1800 Hz at 9600 Hz), phase from sample 0 of the burst.
 - The tool checks that its own shaping and mixing reproduce `Modulate` bit for bit before it writes, so the three files are consistent with each other on the generating machine.
-- Tolerance for a port: compare audio and baseband with an absolute error of at most 1e-5 per sample. Samples are well within +-1 (the measured peak is about 0.47 at the default amplitude of 0.5), a float32 sum of the roughly 17 pulses overlapping any sample carries rounding error well under 1e-6 whatever the summation order, and 1e-5 (about -100 dB against full scale) leaves a tenfold margin without hiding any real fault. If the port computes its own pulse taps, compare them to `11_pulse.f32` at 1e-6 first. Every other file is exact.
+- Tolerance for a port: compare audio and baseband with an absolute error of at most 1e-5 per sample. Samples are well within +-1 (at the default amplitude of 0.5 the measured peak is about 0.47 in the baseband and about 0.44 in the final audio), a float32 sum of the roughly 17 pulses overlapping any sample carries rounding error well under 1e-6 whatever the summation order, and 1e-5 (about -100 dB against full scale) leaves a tenfold margin without hiding any real fault. If the port computes its own pulse taps, compare them to `11_pulse.f32` at 1e-6 first. Every other file is exact.
 
 ## What the tool uses
 

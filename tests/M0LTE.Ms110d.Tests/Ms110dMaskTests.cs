@@ -645,7 +645,7 @@ public class Ms110dMaskTests(ITestOutputHelper output)
         double sum = 0;
         foreach (Complex32[] path in gains)
         {
-            sum += path[Math.Min(index, path.Length - 1)].Cnorm();
+            sum += path[Math.Min(index, path.Length - 1)].MagnitudeSquared();
         }
 
         return sum / gains.Count;

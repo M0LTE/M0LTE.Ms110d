@@ -101,7 +101,7 @@ internal static class Ms110dChainBcjr
                     if (k == 0)
                     {
                         Complex32 expected = preceding.Length > 0 ? main + (h2[t] * preceding[c]) : main;
-                        alpha[baseCur + s] = (-(rx[t] - expected).Cnorm() * inv2[t]) + prior;
+                        alpha[baseCur + s] = (-(rx[t] - expected).MagnitudeSquared() * inv2[t]) + prior;
                         continue;
                     }
 
@@ -110,7 +110,7 @@ internal static class Ms110dChainBcjr
                     for (int r = 0; r < m; r++)
                     {
                         Complex32 expected = main + (h2[t] * constellation[r]);
-                        float val = alpha[basePrev + r] - ((rx[t] - expected).Cnorm() * inv2[t]);
+                        float val = alpha[basePrev + r] - ((rx[t] - expected).MagnitudeSquared() * inv2[t]);
                         acc = LogSumExp(acc, val);
                     }
 
@@ -167,7 +167,7 @@ internal static class Ms110dChainBcjr
                     for (int s = 0; s < m; s++)
                     {
                         Complex32 expected = (h1[t] * constellation[s]) + echo;
-                        float val = beta[(cur * m) + s] - ((rx[t] - expected).Cnorm() * inv2[t])
+                        float val = beta[(cur * m) + s] - ((rx[t] - expected).MagnitudeSquared() * inv2[t])
                             + (hasPriors ? symbolLogPriors[(t * m) + s] : 0f);
                         acc = LogSumExp(acc, val);
                     }

@@ -274,7 +274,7 @@ public sealed class Ms110dDemodulator
         _mixTable = new Complex32[16];
         for (int i = 0; i < 16; i++)
         {
-            _mixTable[i] = Complex32.CmplxConj((float)(2.0 * Math.PI * i / 16.0));
+            _mixTable[i] = Complex32.FromPhase(-((float)(2.0 * Math.PI * i / 16.0)));
         }
 
         byte[] fixedChips = new PreambleGenerator(0, 2).FixedSectionChips();
@@ -285,7 +285,7 @@ public sealed class Ms110dDemodulator
             for (int i = 0; i < ChipsFixed; i++)
             {
                 double theta = 2.0 * Math.PI * BinsHz[b] * i / Ms110dTables.SymbolRate;
-                reference[i] = Ms110dTables.Psk8[fixedChips[i]].Conj() * Complex32.CmplxConj((float)theta);
+                reference[i] = Ms110dTables.Psk8[fixedChips[i]].Conj() * Complex32.FromPhase(-((float)theta));
             }
 
             _mfReference[b] = reference;
@@ -675,16 +675,16 @@ public sealed class Ms110dDemodulator
     {
         long p = _written;
         int parity = (int)(p & 1);
-        _combEnergy[parity] += sample.Cnorm();
+        _combEnergy[parity] += sample.MagnitudeSquared();
         if (p >= 576)
         {
-            _combEnergy[parity] -= _ring[(p - 576) & (RingSize - 1)].Cnorm();
+            _combEnergy[parity] -= _ring[(p - 576) & (RingSize - 1)].MagnitudeSquared();
         }
 
         _ring[p & (RingSize - 1)] = sample;
         if (_genieRing is not null && p < _genieWritten)
         {
-            _genieNoiseSum += (sample - _genieRing[p & (RingSize - 1)]).Cnorm();
+            _genieNoiseSum += (sample - _genieRing[p & (RingSize - 1)]).MagnitudeSquared();
             _genieNoiseCount++;
         }
 
@@ -1079,10 +1079,10 @@ public sealed class Ms110dDemodulator
         }
 
         byte bestDibit = 0;
-        float best = corr[0].Cnorm();
+        float best = corr[0].MagnitudeSquared();
         for (byte s = 1; s < 4; s++)
         {
-            float m = corr[s].Cnorm();
+            float m = corr[s].MagnitudeSquared();
             if (m > best)
             {
                 best = m;
@@ -1225,7 +1225,7 @@ public sealed class Ms110dDemodulator
             lag1 += groups[j + 1] * groups[j].Conj();
         }
 
-        if (lag1.Cnorm() < 1e-12)
+        if (lag1.MagnitudeSquared() < 1e-12)
         {
             return false;
         }
@@ -1241,7 +1241,7 @@ public sealed class Ms110dDemodulator
                 lagL += groups[j + lag] * groups[j].Conj();
             }
 
-            if (lagL.Cnorm() > 1e-12)
+            if (lagL.MagnitudeSquared() > 1e-12)
             {
                 // Resolve the lag-L phase onto the branch nearest the lag-1 estimate.
                 double expected = slope * lag;
@@ -1254,10 +1254,10 @@ public sealed class Ms110dDemodulator
         var anchor = Complex32.Zero;
         for (int j = 0; j < count; j++)
         {
-            anchor += groups[j] * Complex32.Cmplx((float)(-slope * j));
+            anchor += groups[j] * Complex32.FromPhase((float)(-slope * j));
         }
 
-        if (anchor.Cnorm() < 1e-12)
+        if (anchor.MagnitudeSquared() < 1e-12)
         {
             return false;
         }
@@ -1290,7 +1290,7 @@ public sealed class Ms110dDemodulator
         // #101 input AGC (_agcGain, unity except on a globally-low burst): normalizes the
         // receive level ahead of the equalizer. Unity during acquisition and for every
         // nominal-or-stronger burst, so acquisition and the sim masks are untouched.
-        return value * Complex32.CmplxConj((float)theta) * _agcGain;
+        return value * Complex32.FromPhase(-((float)theta)) * _agcGain;
     }
 
     /// <summary>Estimation-side read: the genie ring when the genie is enabled, otherwise
@@ -1309,7 +1309,7 @@ public sealed class Ms110dDemodulator
         // in both rings or a genie run differs even when fed the noisy stream itself.
         var value = Interpolate(pos, _genieRing, Math.Min(_genieWritten, _written));
         double theta = _thetaBase + (_omega * (pos - _chip0));
-        return value * Complex32.CmplxConj((float)theta) * _agcGain; // #101 AGC (see ReadT2)
+        return value * Complex32.FromPhase(-((float)theta)) * _agcGain; // #101 AGC (see ReadT2)
     }
 
     private Complex32 ReadChip(double chip)
@@ -1552,8 +1552,8 @@ public sealed class Ms110dDemodulator
             Complex32 y = _dfe.Equalize(window, past);
             gain += y * _known[n].Conj();
             Complex32 err = y - _known[n];
-            mse += err.Cnorm();
-            energy += window[_ffLead].Cnorm();
+            mse += err.MagnitudeSquared();
+            energy += window[_ffLead].MagnitudeSquared();
         }
 
         _probeMse = mse / k;
@@ -1620,8 +1620,8 @@ public sealed class Ms110dDemodulator
 
             Complex32 y = dfe.Equalize(window, probePast);
             probePhase += y * probe[i].Conj();
-            mse += (y - probe[i]).Cnorm();
-            probeEnergy += window[_ffLead].Cnorm();
+            mse += (y - probe[i]).MagnitudeSquared();
+            probeEnergy += window[_ffLead].MagnitudeSquared();
             statRows++;
             dfe.AddTrainingRow(window, probePast, probe[i], weight: 6f);
         }
@@ -1705,7 +1705,7 @@ public sealed class Ms110dDemodulator
 
         if (postPhase.Abs() / statRows >= 0.10)
         {
-            dfe.RotateTaps(Complex32.CmplxConj((float)postPhase.Arg()));
+            dfe.RotateTaps(Complex32.FromPhase(-((float)postPhase.Arg())));
         }
 
         Complex32[] endTaps = dfe.SnapshotTaps();
@@ -1724,7 +1724,7 @@ public sealed class Ms110dDemodulator
             tapRotation += endTaps[i] * startTaps[i].Conj();
         }
 
-        if (tapRotation.Cnorm() > 1e-12)
+        if (tapRotation.MagnitudeSquared() > 1e-12)
         {
             int frameT2 = 2 * (mode.U + mode.K);
             double deltaOmega = -0.1 * tapRotation.Arg() / frameT2;
@@ -1753,13 +1753,13 @@ public sealed class Ms110dDemodulator
         if (!freshSolve)
         {
             double startNorm = 0, changeNorm = 0;
-            if (tapRotation.Cnorm() > 1e-12)
+            if (tapRotation.MagnitudeSquared() > 1e-12)
             {
                 Complex32 rot = tapRotation * (float)(1.0 / tapRotation.Abs());
                 for (int i = 0; i < endTaps.Length; i++)
                 {
-                    startNorm += startTaps[i].Cnorm();
-                    changeNorm += (endTaps[i] - (rot * startTaps[i])).Cnorm();
+                    startNorm += startTaps[i].MagnitudeSquared();
+                    changeNorm += (endTaps[i] - (rot * startTaps[i])).MagnitudeSquared();
                 }
             }
 
@@ -1824,8 +1824,8 @@ public sealed class Ms110dDemodulator
         double phi = 0;
         if (fading)
         {
-            phi = tapRotation.Cnorm() > 1e-12 ? tapRotation.Arg() : 0.0;
-            Complex32 derot = Complex32.CmplxConj((float)phi);
+            phi = tapRotation.MagnitudeSquared() > 1e-12 ? tapRotation.Arg() : 0.0;
+            Complex32 derot = Complex32.FromPhase(-((float)phi));
             for (int i = 0; i < nTaps; i++)
             {
                 trajectoryEnd[i] = endTaps[i] * derot;
@@ -1865,7 +1865,7 @@ public sealed class Ms110dDemodulator
                 // Same decision-confidence gate as the interpolated fading path below:
                 // QAM16's tight regions make ungated DD updates the fastest way to
                 // self-destruct (WN8 autopsy - phase AND amplitude).
-                if ((y - clean).Cnorm() < ddGate)
+                if ((y - clean).MagnitudeSquared() < ddGate)
                 {
                     dfe.RlsUpdate(row, _decisions, clean, weight: rlsWeight);
                     dfe.AddTrainingRow(row, _decisions, clean, weight: 0.25f);
@@ -1904,7 +1904,7 @@ public sealed class Ms110dDemodulator
                 }
 
                 dfe.RlsUpdate(row, _decisions, clean * rotor, weight: rlsWeight);
-                if ((descrambled - clean).Cnorm() < ddGate)
+                if ((descrambled - clean).MagnitudeSquared() < ddGate)
                 {
                     dfe.AddTrainingRow(row, _decisions, clean * rotor, weight: 0.25f);
                 }
@@ -2004,7 +2004,7 @@ public sealed class Ms110dDemodulator
                 // rig, the §B2.1c fresh re-solve re-collapsed within ONE frame until the
                 // RLS update was gated. When decisions are unusable the interpolated base
                 // carries the channel; when they are trustworthy RLS tracks the residual.
-                if ((descrambled - clean).Cnorm() < ddGate)
+                if ((descrambled - clean).MagnitudeSquared() < ddGate)
                 {
                     dfe.RlsUpdate(row, _decisions, clean * rotor, weight: rlsWeight);
                     dfe.AddTrainingRow(row, _decisions, clean * rotor, weight: 0.25f);
@@ -2042,7 +2042,7 @@ public sealed class Ms110dDemodulator
             // the residual the re-anchor removed (or coasted on below the 0.10 floor),
             // and the slerp's common rotation φ for the data span that follows.
             $"phase={probePhase.Arg():F3} anchor={postPhase.Abs() / statRows:F3}@{postPhase.Arg():F3} " +
-            $"phi={(tapRotation.Cnorm() > 1e-12 ? tapRotation.Arg() : 0f):F3} " +
+            $"phi={(tapRotation.MagnitudeSquared() > 1e-12 ? tapRotation.Arg() : 0f):F3} " +
             $"presence={presence:F2}/{_presenceThreshold:F2}");
 
         if (probeGain < Math.Max(0.10, 0.45 * _probeGainRef))
@@ -2189,7 +2189,7 @@ public sealed class Ms110dDemodulator
         for (int i = 0; i < span; i++)
         {
             received[i] = ReadChip(probeChip + first + i);
-            power += received[i].Cnorm();
+            power += received[i].MagnitudeSquared();
         }
 
         power /= span;
@@ -2460,7 +2460,7 @@ public sealed class Ms110dDemodulator
     internal static void TapTrajectory(
         ReadOnlySpan<Complex32> start, ReadOnlySpan<Complex32> endDerotated, double phi, float f, Span<Complex32> taps)
     {
-        Complex32 ramp = Complex32.Cmplx((float)(phi * f));
+        Complex32 ramp = Complex32.FromPhase((float)(phi * f));
         float g = 1f - f;
         for (int i = 0; i < taps.Length; i++)
         {
@@ -2546,7 +2546,7 @@ public sealed class Ms110dDemodulator
         Complex32 result = constellation[0];
         for (int s = 0; s < constellation.Length; s++)
         {
-            float d = (y - constellation[s]).Cnorm();
+            float d = (y - constellation[s]).MagnitudeSquared();
             if (d < best)
             {
                 best = d;
@@ -2616,7 +2616,7 @@ public sealed class Ms110dDemodulator
             for (int s = 0; s < constellation.Length; s++)
             {
                 int label = bitLabels != null ? bitLabels[s] : (s ^ scramble);
-                float d = (y - constellation[s]).Cnorm();
+                float d = (y - constellation[s]).MagnitudeSquared();
                 if (((label >> (bits - 1 - b)) & 1) == 0)
                 {
                     if (d < min0) min0 = d;
@@ -2733,7 +2733,7 @@ public sealed class Ms110dDemodulator
                 _walshPhaseAcc += combined;
                 if (++_walshPhaseCount == 8)
                 {
-                    if (_walshPhaseAcc.Cnorm() > 1e-12)
+                    if (_walshPhaseAcc.MagnitudeSquared() > 1e-12)
                     {
                         double err = _walshPhaseAcc.Arg();
                         RetuneCarrier((2.0 * (_symbolChip + 16)) + _tau, 0.4 * err, 0.06 * err / 512.0);
@@ -3178,10 +3178,10 @@ public sealed class Ms110dDemodulator
         for (int col = 0; col < n; col++)
         {
             int pivot = col;
-            float best = a[(col * stride) + col].Cnorm();
+            float best = a[(col * stride) + col].MagnitudeSquared();
             for (int r = col + 1; r < n; r++)
             {
-                float m = a[(r * stride) + col].Cnorm();
+                float m = a[(r * stride) + col].MagnitudeSquared();
                 if (m > best)
                 {
                     best = m;
@@ -3205,11 +3205,11 @@ public sealed class Ms110dDemodulator
                 (b[col], b[pivot]) = (b[pivot], b[col]);
             }
 
-            Complex32 inv = a[(col * stride) + col].Conj() * (1f / a[(col * stride) + col].Cnorm());
+            Complex32 inv = a[(col * stride) + col].Conj() * (1f / a[(col * stride) + col].MagnitudeSquared());
             for (int r = col + 1; r < n; r++)
             {
                 Complex32 factor = a[(r * stride) + col] * inv;
-                if (factor.Cnorm() == 0f)
+                if (factor.MagnitudeSquared() == 0f)
                 {
                     continue;
                 }
@@ -3231,7 +3231,7 @@ public sealed class Ms110dDemodulator
                 acc -= a[(r * stride) + c] * b[c];
             }
 
-            Complex32 inv = a[(r * stride) + r].Conj() * (1f / a[(r * stride) + r].Cnorm());
+            Complex32 inv = a[(r * stride) + r].Conj() * (1f / a[(r * stride) + r].MagnitudeSquared());
             b[r] = acc * inv;
         }
 
@@ -3364,7 +3364,7 @@ public sealed class Ms110dDemodulator
                     {
                         Complex32 wire = Ms110dTables.Qam16[t ^ nibble];
                         e += wire * pt;
-                        e2 += wire.Cnorm() * pt;
+                        e2 += wire.MagnitudeSquared() * pt;
                         continue;
                     }
 
@@ -3381,12 +3381,12 @@ public sealed class Ms110dDemodulator
                 if (qamSoft)
                 {
                     _softExpected[idx] = e;
-                    _softVar[idx] = Math.Max(0f, e2 - e.Cnorm());
+                    _softVar[idx] = Math.Max(0f, e2 - e.MagnitudeSquared());
                 }
                 else
                 {
                     _softExpected[idx] = e * Ms110dTables.Psk8[_scrambler.NextPsk(0)];
-                    _softVar[idx] = Math.Max(0f, 1f - e.Cnorm());
+                    _softVar[idx] = Math.Max(0f, 1f - e.MagnitudeSquared());
                 }
             }
         }
@@ -3403,7 +3403,7 @@ public sealed class Ms110dDemodulator
 
             for (int i = 0; i < _softExpected.Length; i++)
             {
-                meanE += Math.Sqrt(_softExpected[i].Cnorm());
+                meanE += Math.Sqrt(_softExpected[i].MagnitudeSquared());
                 weak += _softVar[i] > 0.25f ? 1 : 0;
             }
 
@@ -3581,7 +3581,7 @@ public sealed class Ms110dDemodulator
                     regularization: _trackRidge, ffNoisePower: GenieNoisePower(),
                     maxLag: Math.Min(fb, mode.U / 2), allowPair: true);
                 FrameDiagnostics.Invoke(FormattableString.Invariant(
-                    $"frozen-pair b{_blockIndex} f{f}: rows={solveRows} lag={pairTir.Lag} |c1|={Math.Sqrt(pairTir.Coefficient.Cnorm()):F3} lag2={pairTir.Lag2} |c2|={Math.Sqrt(pairTir.Coefficient2.Cnorm()):F3} sseN={pairTir.SseNull:E3} sseP={pairTir.SseTir:E3}"));
+                    $"frozen-pair b{_blockIndex} f{f}: rows={solveRows} lag={pairTir.Lag} |c1|={Math.Sqrt(pairTir.Coefficient.MagnitudeSquared()):F3} lag2={pairTir.Lag2} |c2|={Math.Sqrt(pairTir.Coefficient2.MagnitudeSquared()):F3} sseN={pairTir.SseNull:E3} sseP={pairTir.SseTir:E3}"));
                 AccumulateProbeRows(f, window, past);
             }
 
@@ -3656,12 +3656,12 @@ public sealed class Ms110dDemodulator
                 {
                     int i = probeIdx[(p * mode.K) + r];
                     Complex32 resid = probeY[(p * mode.K) + r] - (anchor[p] * probe[i]);
-                    noiseAcc += resid.Cnorm();
+                    noiseAcc += resid.MagnitudeSquared();
                     noiseRows++;
                 }
             }
 
-            // Cnorm() sums both complex dimensions; the BCJR wants σ² per dimension
+            // MagnitudeSquared() sums both complex dimensions; the BCJR wants σ² per dimension
             // (the #65 2×-under-confidence lesson).
             float noiseVar = Math.Max(noiseRows > 0 ? 0.5f * noiseAcc / noiseRows : 1e-2f, 1e-6f);
 
@@ -3750,7 +3750,7 @@ public sealed class Ms110dDemodulator
                                 {
                                     int i = probeIdx[(p * mode.K) + r];
                                     Complex32 resid = probeY[(p * mode.K) + r] - (anchorAlt[p] * probe[i]);
-                                    altAcc += resid.Cnorm();
+                                    altAcc += resid.MagnitudeSquared();
                                     altRows++;
                                 }
                             }
@@ -3803,7 +3803,7 @@ public sealed class Ms110dDemodulator
             {
                 chainDelay = 1;
                 h2Chain = Complex32.Zero;
-                noiseVar += 0.5f * tir.Coefficient.Cnorm();
+                noiseVar += 0.5f * tir.Coefficient.MagnitudeSquared();
             }
 
             // Descrambled-domain assembly, mirroring TurboCore: h1 rides through the
@@ -3881,7 +3881,7 @@ public sealed class Ms110dDemodulator
             if (FrameDiagnostics is not null)
             {
                 FrameDiagnostics.Invoke(FormattableString.Invariant(
-                    $"frozen-frame b{_blockIndex} f{f}: lag={tir.Lag} |c|={Math.Sqrt(h2Wire.Cnorm()):F3} n={noiseVar:E3} rows={solveRows} h1a={anchor[0].Abs():F3}|{anchor[1].Abs():F3} sseN={tir.SseNull:E3} sse1={tir.SseTir:E3} a0={anchor[0].Re:F4},{anchor[0].Im:F4} a1={anchor[1].Re:F4},{anchor[1].Im:F4} shift={lockShift}"));
+                    $"frozen-frame b{_blockIndex} f{f}: lag={tir.Lag} |c|={Math.Sqrt(h2Wire.MagnitudeSquared()):F3} n={noiseVar:E3} rows={solveRows} h1a={anchor[0].Abs():F3}|{anchor[1].Abs():F3} sseN={tir.SseNull:E3} sse1={tir.SseTir:E3} a0={anchor[0].Re:F4},{anchor[0].Im:F4} a1={anchor[1].Re:F4},{anchor[1].Im:F4} shift={lockShift}"));
             }
 
             var frameLlrs = new float[mode.U * bitsPerSymbol];
@@ -4071,7 +4071,7 @@ public sealed class Ms110dDemodulator
                 x2 = new float[mode.U];
                 for (int u = 0; u < mode.U; u++)
                 {
-                    x2[u] = expected[u].Cnorm() + (symbolVar is null ? 0f : expectedVar[u]);
+                    x2[u] = expected[u].MagnitudeSquared() + (symbolVar is null ? 0f : expectedVar[u]);
                 }
             }
 
@@ -4189,11 +4189,11 @@ public sealed class Ms110dDemodulator
             {
                 tirFrames++;
                 tirLagSum += tir.Lag;
-                tirCoeffSum += Math.Sqrt(tir.Coefficient.Cnorm());
+                tirCoeffSum += Math.Sqrt(tir.Coefficient.MagnitudeSquared());
                 if (tir.Lag2 > 0)
                 {
                     tirPairFrames++;
-                    tirCoeff2Sum += Math.Sqrt(tir.Coefficient2.Cnorm());
+                    tirCoeff2Sum += Math.Sqrt(tir.Coefficient2.MagnitudeSquared());
                 }
             }
 
@@ -4229,7 +4229,7 @@ public sealed class Ms110dDemodulator
                         }
                     }
 
-                    probePriceErr += (dfe.Equalize(window, past) - model).Cnorm();
+                    probePriceErr += (dfe.Equalize(window, past) - model).MagnitudeSquared();
                     probePriceRows++;
                 }
             }
@@ -4438,7 +4438,7 @@ public sealed class Ms110dDemodulator
                     }
 
                     Complex32 h2 = acc * (qamWire ? 1f / Math.Max(1e-3f, den) : 1f / (mode.U - lag));
-                    if (h2.Cnorm() > h2Avg.Cnorm())
+                    if (h2.MagnitudeSquared() > h2Avg.MagnitudeSquared())
                     {
                         h2Avg = h2;
                         delay = lag;
@@ -4449,7 +4449,7 @@ public sealed class Ms110dDemodulator
                 // the max over ≤24 lags sits near 2·ln24·σ²/U - at the worst gated point
                 // (WN3, U=96, ~4 dB Es/N0) that is ≈ 0.027·|h1|². Below 0.04·|h1|² the
                 // "echo" is a noise pick: run the chains echo-free (matched-filter mode).
-                if (h2Avg.Cnorm() < 0.04f * h1Avg.Cnorm())
+                if (h2Avg.MagnitudeSquared() < 0.04f * h1Avg.MagnitudeSquared())
                 {
                     h2Avg = Complex32.Zero;
                     delay = 1;
@@ -4479,7 +4479,7 @@ public sealed class Ms110dDemodulator
                     (tg1[u], tg2[u]) = TruthGainsAtSample(2.0 * PositionOfChip(frameChip + u));
                 }
 
-                truthEcho = segEcho || h2Avg.Cnorm() > 0f;
+                truthEcho = segEcho || h2Avg.MagnitudeSquared() > 0f;
                 truthXtaps = TruthGaugeXtaps;
                 truthParts = Math.Clamp(TruthGaugeSplit, 1, 2);
                 truthFollow = MiniProbe.Get(mode.K, boundary: (f + 2) % _il.Frames == 0);
@@ -4615,7 +4615,7 @@ public sealed class Ms110dDemodulator
                             model += ((tp[8] * tg1[u]) + (tp[9] * tg2[u])) * post;
                         }
 
-                        fitResid += (estWire[u] - model).Cnorm();
+                        fitResid += (estWire[u] - model).MagnitudeSquared();
                     }
 
                     FrameDiagnostics.Invoke(
@@ -4735,22 +4735,22 @@ public sealed class Ms110dDemodulator
                         ? h2u * rotors[u - delay] * rotors[u].Conj()
                         : h2u * rotors[u].Conj();
                 Complex32 predicted = (h1u * expected[u]) + (h2u * echoWire);
-                residual += (rxWire[u] - predicted).Cnorm();
+                residual += (rxWire[u] - predicted).MagnitudeSquared();
                 if (symbolVar is not null)
                 {
                     // EM-consistent noise estimate for soft labels: E|z − h·x|² =
                     // |z − h·E[x]|² + |h|²·(1 − |E[x]|²). The preceding-probe echo
                     // sources (u < delay) are known exactly - variance 0. The cancelled
                     // adjacent tap contributes its own cancellation uncertainty.
-                    residual += h1u.Cnorm() * expectedVar[u];
+                    residual += h1u.MagnitudeSquared() * expectedVar[u];
                     if (u >= delay)
                     {
-                        residual += h2u.Cnorm() * expectedVar[u - delay];
+                        residual += h2u.MagnitudeSquared() * expectedVar[u - delay];
                     }
 
                     if (delay2 > 0 && u >= delay2)
                     {
-                        residual += h2b.Cnorm() * expectedVar[u - delay2];
+                        residual += h2b.MagnitudeSquared() * expectedVar[u - delay2];
                     }
                 }
 
@@ -4763,7 +4763,7 @@ public sealed class Ms110dDemodulator
                 }
             }
 
-            // Cnorm() sums both complex dimensions; the BCJR wants σ² per dimension, so
+            // MagnitudeSquared() sums both complex dimensions; the BCJR wants σ² per dimension, so
             // halve (the #65 2×-under-confidence lesson).
             float noiseVar = Math.Max(0.5f * residual / mode.U, 1e-6f);
             for (int s = 0; s < Segments; s++)

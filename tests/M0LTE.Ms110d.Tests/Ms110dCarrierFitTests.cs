@@ -20,7 +20,7 @@ public class Ms110dCarrierFitTests
         var groups = new Complex32[40];
         for (int j = 0; j < 40; j++)
         {
-            groups[j] = Complex32.Cmplx((float)((0.3 * j) + 0.7)) * 5f;
+            groups[j] = Complex32.FromPhase((float)((0.3 * j) + 0.7)) * 5f;
         }
 
         Ms110dDemodulator.EstimateCarrierFit(groups, out double slope, out double intercept)
@@ -41,17 +41,17 @@ public class Ms110dCarrierFitTests
         var groups = new Complex32[72];
         for (int j = 0; j < 20; j++)
         {
-            groups[j] = Complex32.Cmplx(0.9f) * 3f;
+            groups[j] = Complex32.FromPhase(0.9f) * 3f;
         }
 
         for (int j = 20; j < 35; j++)
         {
-            groups[j] = Complex32.Cmplx((float)((random.NextDouble() * 2 * Math.PI) - Math.PI)) * 0.05f;
+            groups[j] = Complex32.FromPhase((float)((random.NextDouble() * 2 * Math.PI) - Math.PI)) * 0.05f;
         }
 
         for (int j = 35; j < 72; j++)
         {
-            groups[j] = Complex32.Cmplx(0.9f) * 3f;
+            groups[j] = Complex32.FromPhase(0.9f) * 3f;
         }
 
         Ms110dDemodulator.EstimateCarrierFit(groups, out double slope, out double intercept)
@@ -73,7 +73,7 @@ public class Ms110dCarrierFitTests
         for (int j = 0; j < 40; j++)
         {
             double noise = 0.1 * ((random.NextDouble() * 2) - 1);
-            groups[j] = Complex32.Cmplx((float)((0.5 * j) + noise)) * 2f;
+            groups[j] = Complex32.FromPhase((float)((0.5 * j) + noise)) * 2f;
         }
 
         Ms110dDemodulator.EstimateCarrierFit(groups, out double slope, out _)

@@ -97,7 +97,7 @@ public class Ms110dMfbBound
         IReadOnlyList<Complex32[]> gainsNoisy = noisy.PathGains()!;
         for (int k = 0; k < gains.Count; k++)
         {
-            (gains[k][0] - gainsNoisy[k][0]).Cnorm().Should().Be(0f,
+            (gains[k][0] - gainsNoisy[k][0]).MagnitudeSquared().Should().Be(0f,
                 "the same-seed ∞-SNR channel must reproduce the identical gain draw");
         }
 
@@ -177,7 +177,7 @@ public class Ms110dMfbBound
                 double ms = 0;
                 foreach (Complex32 g in gains[k])
                 {
-                    ms += g.Cnorm();
+                    ms += g.MagnitudeSquared();
                 }
 
                 float std = (float)(Math.Sqrt(ms / gains[k].Length) * trajNoise / Math.Sqrt(2.0));
@@ -204,8 +204,8 @@ public class Ms110dMfbBound
             for (int i = lo; i < hi; i++)
             {
                 Complex32 e = InterpGain(estGains[k], i) - gains[k][i];
-                err += e.Cnorm();
-                pow += gains[k][i].Cnorm();
+                err += e.MagnitudeSquared();
+                pow += gains[k][i].MagnitudeSquared();
             }
 
             nmse[k] = err / Math.Max(pow, 1e-12);
@@ -258,7 +258,7 @@ public class Ms110dMfbBound
                     int nib = scrambleNibbles[(f * u256) + u];
                     int sym = DataIndex(b, f, u);
                     Complex32 wire = Ms110dTables.Qam16[number ^ nib];
-                    (wireSymbols[sym] - wire).Cnorm().Should().Be(0f,
+                    (wireSymbols[sym] - wire).MagnitudeSquared().Should().Be(0f,
                         "the data-index layout must match the modulator's wire stream");
 
                     (Complex32 y, float m11, float m12, float m22) =
@@ -267,7 +267,7 @@ public class Ms110dMfbBound
                     // Predicted vs measured statistic-noise check (lane iii).
                     float det = (m11 * m22) - (m12 * m12);
                     predSum += sigma2 * (m11 + m22) / Math.Max(det, 1e-12f);
-                    measSum += (y - wire).Cnorm();
+                    measSum += (y - wire).MagnitudeSquared();
 
                     int best = 0;
                     float bestMetric = float.MaxValue;

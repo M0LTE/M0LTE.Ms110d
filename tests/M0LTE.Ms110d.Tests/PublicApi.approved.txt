@@ -8,20 +8,17 @@ namespace M0LTE.Ms110d
         public static M0LTE.Ms110d.Complex32 Zero { get; }
         public float Abs() { }
         public float Arg() { }
-        public float Cnorm() { }
         public M0LTE.Ms110d.Complex32 Conj() { }
         public bool Equals(M0LTE.Ms110d.Complex32 other) { }
         public override bool Equals(object? obj) { }
         public override int GetHashCode() { }
+        public float MagnitudeSquared() { }
         public override string ToString() { }
-        public static M0LTE.Ms110d.Complex32 Cmplx(float phase) { }
-        public static M0LTE.Ms110d.Complex32 CmplxConj(float phase) { }
+        public static M0LTE.Ms110d.Complex32 FromPhase(float phase) { }
         public static bool operator !=(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
         public static M0LTE.Ms110d.Complex32 operator *(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
         public static M0LTE.Ms110d.Complex32 operator *(M0LTE.Ms110d.Complex32 a, float s) { }
-        public static M0LTE.Ms110d.Complex32 operator *(float s, M0LTE.Ms110d.Complex32 a) { }
         public static M0LTE.Ms110d.Complex32 operator +(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
-        public static M0LTE.Ms110d.Complex32 operator -(M0LTE.Ms110d.Complex32 a) { }
         public static M0LTE.Ms110d.Complex32 operator -(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
         public static bool operator ==(M0LTE.Ms110d.Complex32 a, M0LTE.Ms110d.Complex32 b) { }
     }

@@ -113,7 +113,7 @@ public sealed class Wid0WalshModem
         bestDibit = 0;
         for (int s = 1; s < 4; s++)
         {
-            if (corr[s].Cnorm() > corr[bestDibit].Cnorm())
+            if (corr[s].MagnitudeSquared() > corr[bestDibit].MagnitudeSquared())
             {
                 bestDibit = s;
             }
@@ -190,7 +190,7 @@ public sealed class Wid0WalshModem
             {
                 Complex32 c = corr[(k * 4) + s];
                 acc += (_gains[k].Conj() * c).Re;
-                pow += c.Cnorm();
+                pow += c.MagnitudeSquared();
             }
 
             d[s] = acc;
@@ -306,7 +306,7 @@ public sealed class Wid0WalshModem
             {
                 Complex32 c = corr[(k * 4) + s];
                 acc += (_gains[k].Conj() * c).Re;
-                pow += c.Cnorm();
+                pow += c.MagnitudeSquared();
             }
 
             d[s] = acc;

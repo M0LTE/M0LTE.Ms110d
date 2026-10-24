@@ -78,7 +78,7 @@ public sealed class Dfe
             float e = 0f;
             foreach (Complex32 t in _ff)
             {
-                e += t.Cnorm();
+                e += t.MagnitudeSquared();
             }
 
             return e;
@@ -114,12 +114,12 @@ public sealed class Dfe
         float norm = 1e-6f;
         for (int i = 0; i < _ff.Length; i++)
         {
-            norm += window[i].Cnorm();
+            norm += window[i].MagnitudeSquared();
         }
 
         for (int j = 0; j < _fb.Length; j++)
         {
-            norm += past[j].Cnorm();
+            norm += past[j].MagnitudeSquared();
         }
 
         float g = mu / norm;
@@ -288,7 +288,7 @@ public sealed class Dfe
 
         _trainingRows++;
         _trainingWeightSum += weight;
-        _trainingTargetEnergy += weight * desired.Cnorm();
+        _trainingTargetEnergy += weight * desired.MagnitudeSquared();
     }
 
     /// <summary>Soft-label variant of
@@ -549,7 +549,7 @@ public sealed class Dfe
                     // quantity the monic −b reports. A collapsed cursor gain (|g|²
                     // below gauge noise) reports the raw c; diagnostics only, the
                     // demod re-estimates the echo model by correlation either way.
-                    float gN = g.Cnorm();
+                    float gN = g.MagnitudeSquared();
                     if (gN >= 1e-4f)
                     {
                         Complex32 invG = g.Conj() * (1f / gN);
@@ -771,7 +771,7 @@ public sealed class Dfe
             float nrm = 0f;
             for (int i = 0; i < m; i++)
             {
-                nrm += v[i].Cnorm();
+                nrm += v[i].MagnitudeSquared();
             }
 
             if (nrm <= 0f || !float.IsFinite(nrm))
@@ -790,13 +790,13 @@ public sealed class Dfe
         int big = 0;
         for (int i = 1; i < m; i++)
         {
-            if (v[i].Cnorm() > v[big].Cnorm())
+            if (v[i].MagnitudeSquared() > v[big].MagnitudeSquared())
             {
                 big = i;
             }
         }
 
-        Complex32 phase = v[big] * (1f / MathF.Sqrt(v[big].Cnorm()));
+        Complex32 phase = v[big] * (1f / MathF.Sqrt(v[big].MagnitudeSquared()));
         for (int i = 0; i < m; i++)
         {
             v[i] *= phase.Conj();
@@ -931,10 +931,10 @@ public sealed class Dfe
             }
 
             quad += (sol[i].Conj() * acc).Re;
-            nrm += sol[i].Cnorm();
+            nrm += sol[i].MagnitudeSquared();
             if (i < f)
             {
-                nrmFf += sol[i].Cnorm();
+                nrmFf += sol[i].MagnitudeSquared();
             }
         }
 

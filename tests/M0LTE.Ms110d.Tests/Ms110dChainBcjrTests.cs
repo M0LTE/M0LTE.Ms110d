@@ -176,7 +176,7 @@ public class Ms110dChainBcjrTests
             {
                 Complex32 echoSym = i >= delay ? Qpsk[seq[i - delay]] : preceding[i];
                 Complex32 expected = (h1[i] * Qpsk[seq[i]]) + (h2[i] * echoSym);
-                logLik -= (rx[i] - expected).Cnorm() / (2.0 * noiseVar);
+                logLik -= (rx[i] - expected).MagnitudeSquared() / (2.0 * noiseVar);
             }
 
             for (int i = 0; i < n; i++)
