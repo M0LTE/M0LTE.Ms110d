@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="M0LTE.Ms110d.Tests" />
+    <InternalsVisibleTo Include="M0LTE.Ms110d.RefGen" />
   </ItemGroup>
 
 </Project>
