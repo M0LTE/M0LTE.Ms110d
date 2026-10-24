@@ -1,5 +1,4 @@
 using System.Buffers;
-using M0LTE.Ofdm;
 
 namespace M0LTE.Ms110d;
 
@@ -50,15 +49,15 @@ internal static class Ms110dChainBcjr
     /// heteroscedastic, and a frame-constant floor over-confidences exactly the spans
     /// where the model is worst. Empty broadcasts the scalar.</param>
     public static void Equalize(
-        ReadOnlySpan<Cf> rx,
-        ReadOnlySpan<Cf> h1,
-        ReadOnlySpan<Cf> h2,
+        ReadOnlySpan<Complex32> rx,
+        ReadOnlySpan<Complex32> h1,
+        ReadOnlySpan<Complex32> h2,
         int delay,
         float noiseVar,
-        ReadOnlySpan<Cf> constellation,
+        ReadOnlySpan<Complex32> constellation,
         ReadOnlySpan<byte> bitLabels,
         int bitsPerSymbol,
-        ReadOnlySpan<Cf> preceding,
+        ReadOnlySpan<Complex32> preceding,
         Span<float> llrs,
         ReadOnlySpan<float> symbolLogPriors = default,
         ReadOnlySpan<float> noiseVarPerSymbol = default)
@@ -98,10 +97,10 @@ internal static class Ms110dChainBcjr
                 for (int s = 0; s < m; s++)
                 {
                     float prior = hasPriors ? symbolLogPriors[(t * m) + s] : 0f;
-                    Cf main = h1[t] * constellation[s];
+                    Complex32 main = h1[t] * constellation[s];
                     if (k == 0)
                     {
-                        Cf expected = preceding.Length > 0 ? main + (h2[t] * preceding[c]) : main;
+                        Complex32 expected = preceding.Length > 0 ? main + (h2[t] * preceding[c]) : main;
                         alpha[baseCur + s] = (-(rx[t] - expected).Cnorm() * inv2[t]) + prior;
                         continue;
                     }
@@ -110,7 +109,7 @@ internal static class Ms110dChainBcjr
                     float acc = NegInf;
                     for (int r = 0; r < m; r++)
                     {
-                        Cf expected = main + (h2[t] * constellation[r]);
+                        Complex32 expected = main + (h2[t] * constellation[r]);
                         float val = alpha[basePrev + r] - ((rx[t] - expected).Cnorm() * inv2[t]);
                         acc = LogSumExp(acc, val);
                     }
@@ -163,11 +162,11 @@ internal static class Ms110dChainBcjr
                 int next = 1 - cur;
                 for (int r = 0; r < m; r++)
                 {
-                    Cf echo = h2[t] * constellation[r];
+                    Complex32 echo = h2[t] * constellation[r];
                     float acc = NegInf;
                     for (int s = 0; s < m; s++)
                     {
-                        Cf expected = (h1[t] * constellation[s]) + echo;
+                        Complex32 expected = (h1[t] * constellation[s]) + echo;
                         float val = beta[(cur * m) + s] - ((rx[t] - expected).Cnorm() * inv2[t])
                             + (hasPriors ? symbolLogPriors[(t * m) + s] : 0f);
                         acc = LogSumExp(acc, val);

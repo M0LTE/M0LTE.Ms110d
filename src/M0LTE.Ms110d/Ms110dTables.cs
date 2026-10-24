@@ -1,4 +1,3 @@
-using M0LTE.Ofdm;
 
 namespace M0LTE.Ms110d;
 
@@ -83,7 +82,7 @@ public static class Ms110dTables
 
     /// <summary>8PSK symbol constellation, Table D-VI (<c>d06-8psk-symbol-mapping.csv</c>):
     /// symbol s at phase s·45°. Printed I/Q values used verbatim.</summary>
-    public static readonly Cf[] Psk8 =
+    public static readonly Complex32[] Psk8 =
     [
         new(1.000000f, 0.000000f),
         new(0.707107f, 0.707107f),
@@ -102,7 +101,7 @@ public static class Ms110dTables
     /// <summary>16-QAM constellation, Table D-VII (<c>d07-constellation-16qam.csv</c>):
     /// 12 outer-ring points at radius 1.0 (30° spacing) + 4 inner-ring points at
     /// radius ≈0.366 (45° spacing). Printed I/Q values used verbatim.</summary>
-    public static readonly Cf[] Qam16 =
+    public static readonly Complex32[] Qam16 =
     [
         new(0.866025f, 0.500000f),
         new(0.500000f, 0.866025f),
@@ -124,7 +123,7 @@ public static class Ms110dTables
 
     /// <summary>Table D-XXII(a): 13-symbol mini-probe base sequence (Barker-13, real BPSK,
     /// <c>d22a-base13-miniprobe.csv</c>).</summary>
-    public static readonly Cf[] Base13 =
+    public static readonly Complex32[] Base13 =
     [
         new(1, 0), new(1, 0), new(1, 0), new(1, 0), new(1, 0), new(-1, 0), new(-1, 0),
         new(1, 0), new(1, 0), new(-1, 0), new(1, 0), new(-1, 0), new(1, 0),
@@ -132,7 +131,7 @@ public static class Ms110dTables
 
     /// <summary>Table D-XXIII: 16-symbol mini-probe base sequence
     /// (<c>d23-base16-miniprobe.csv</c>).</summary>
-    public static readonly Cf[] Base16 =
+    public static readonly Complex32[] Base16 =
     [
         new(1, 0), new(1, 0), new(1, 0), new(1, 0), new(1, 0), new(0, -1), new(-1, 0), new(0, 1),
         new(1, 0), new(-1, 0), new(1, 0), new(-1, 0), new(1, 0), new(0, 1), new(-1, 0), new(0, -1),
@@ -141,7 +140,7 @@ public static class Ms110dTables
     /// <summary>Table D-XXV: 25-symbol mini-probe base sequence
     /// (<c>d25-base25-miniprobe.csv</c>; printed six-decimal values verbatim, including the
     /// row-24 0.309016 quirk).</summary>
-    public static readonly Cf[] Base25 =
+    public static readonly Complex32[] Base25 =
     [
         new(1.000000f, 0.000000f), new(1.000000f, 0.000000f), new(1.000000f, 0.000000f),
         new(1.000000f, 0.000000f), new(1.000000f, 0.000000f), new(1.000000f, 0.000000f),
@@ -156,7 +155,7 @@ public static class Ms110dTables
 
     /// <summary>Table D-XXIV: 19-symbol mini-probe base sequence
     /// (<c>d24-base19-miniprobe.csv</c>) - not used at 3 kHz; carried for completeness.</summary>
-    public static readonly Cf[] Base19 =
+    public static readonly Complex32[] Base19 =
     [
         new(1, 0), new(-1, 0), new(1, 0), new(1, 0), new(-1, 0), new(-1, 0), new(-1, 0),
         new(-1, 0), new(1, 0), new(-1, 0), new(1, 0), new(-1, 0), new(1, 0), new(1, 0),

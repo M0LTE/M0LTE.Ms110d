@@ -1,4 +1,3 @@
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 
 namespace M0LTE.Ms110d.Tests;
@@ -10,13 +9,13 @@ namespace M0LTE.Ms110d.Tests;
 /// </summary>
 public class DfeTests
 {
-    private static Cf[] RandomBpsk(int count, int seed)
+    private static Complex32[] RandomBpsk(int count, int seed)
     {
         var random = new Random(seed);
-        var symbols = new Cf[count];
+        var symbols = new Complex32[count];
         for (int i = 0; i < count; i++)
         {
-            symbols[i] = new Cf(random.Next(2) == 0 ? 1f : -1f, 0);
+            symbols[i] = new Complex32(random.Next(2) == 0 ? 1f : -1f, 0);
         }
 
         return symbols;
@@ -25,10 +24,10 @@ public class DfeTests
     /// <summary>Feeds one RLS update for the trivial identity channel (window carries the
     /// current and previous symbol; the desired output is ±current) and returns the
     /// pre-update error magnitude.</summary>
-    private static float Update(Dfe dfe, Cf current, Cf previous, Cf desired, float weight)
+    private static float Update(Dfe dfe, Complex32 current, Complex32 previous, Complex32 desired, float weight)
     {
-        Span<Cf> window = [current, previous];
-        Cf y = dfe.RlsUpdate(window, [], desired, weight);
+        Span<Complex32> window = [current, previous];
+        Complex32 y = dfe.RlsUpdate(window, [], desired, weight);
         return (desired - y).Abs();
     }
 
@@ -42,7 +41,7 @@ public class DfeTests
         // scale-invariant in the weight, so the advisory rows re-converge just like full ones.
         var dfe = new Dfe(ffTaps: 2, fbTaps: 0);
         dfe.BeginRls(lambda: 0.95f, pInit: 1.0f);
-        Cf[] symbols = RandomBpsk(260, seed: 7);
+        Complex32[] symbols = RandomBpsk(260, seed: 7);
 
         for (int i = 1; i < 100; i++)
         {
@@ -66,8 +65,8 @@ public class DfeTests
         // out an all-0.1-weight run must track exactly like an all-1.0 run. Drive both with
         // the same slowly-rotating channel: any weight/P inconsistency shows up as a 10×
         // longer tracking lag in the advisory run and the final taps diverge.
-        Cf[] symbols = RandomBpsk(400, seed: 11);
-        Cf[][] finals = new Cf[2][];
+        Complex32[] symbols = RandomBpsk(400, seed: 11);
+        Complex32[][] finals = new Complex32[2][];
         float[] weights = [1f, 0.1f];
         for (int run = 0; run < 2; run++)
         {
@@ -75,7 +74,7 @@ public class DfeTests
             dfe.BeginRls(lambda: 0.95f, pInit: 1.0f);
             for (int i = 1; i < 400; i++)
             {
-                Cf gain = Cf.Cmplx(0.01f * i);
+                Complex32 gain = Complex32.Cmplx(0.01f * i);
                 Update(dfe, symbols[i], symbols[i - 1], gain * symbols[i], weights[run]);
             }
 
@@ -96,11 +95,11 @@ public class DfeTests
         // deviation. taps = base + deviation before the translate must give
         // taps = base' + THE SAME deviation after it.
         var dfe = new Dfe(ffTaps: 2, fbTaps: 1);
-        Cf[] baseA = [new(1f, 0.5f), new(-0.25f, 0f), new(0f, -1f)];
-        Cf[] baseB = [new(0.5f, 0.75f), new(0.25f, -0.5f), new(1f, 1f)];
-        Cf[] deviation = [new(0.1f, -0.2f), new(0f, 0.05f), new(-0.3f, 0f)];
+        Complex32[] baseA = [new(1f, 0.5f), new(-0.25f, 0f), new(0f, -1f)];
+        Complex32[] baseB = [new(0.5f, 0.75f), new(0.25f, -0.5f), new(1f, 1f)];
+        Complex32[] deviation = [new(0.1f, -0.2f), new(0f, 0.05f), new(-0.3f, 0f)];
 
-        var withDeviation = new Cf[3];
+        var withDeviation = new Complex32[3];
         for (int i = 0; i < 3; i++)
         {
             withDeviation[i] = baseA[i] + deviation[i];
@@ -109,7 +108,7 @@ public class DfeTests
         dfe.LoadTaps(withDeviation);
         dfe.TranslateTaps(baseA, baseB);
 
-        Cf[] result = dfe.SnapshotTaps();
+        Complex32[] result = dfe.SnapshotTaps();
         for (int i = 0; i < 3; i++)
         {
             (result[i] - (baseB[i] + deviation[i])).Abs().Should().BeLessThan(1e-6f,
@@ -124,12 +123,12 @@ public class DfeTests
         // must rotate at constant magnitude. Chord (plain linear) interpolation dips to
         // cos(φ/2) at midspan - 6 % low at the 40°/frame rotations of the WN7 autopsy,
         // far worse through fade swings - which is exactly why the phase ramp exists.
-        Cf[] start = [new(1f, 0f), new(0.3f, -0.7f)];
+        Complex32[] start = [new(1f, 0f), new(0.3f, -0.7f)];
         const float phi = 1.2f; // ~69°, a fade-swing-scale rotation
-        Cf rotor = Cf.Cmplx(phi);
+        Complex32 rotor = Complex32.Cmplx(phi);
         // The caller hands TapTrajectory the END taps DE-rotated by φ - for a pure
         // rotation that is the start taps again.
-        var trajectory = new Cf[2];
+        var trajectory = new Complex32[2];
         Ms110dDemodulator.TapTrajectory(start, start, phi, 0.5f, trajectory);
         for (int i = 0; i < 2; i++)
         {
@@ -151,7 +150,7 @@ public class DfeTests
     {
         var dfe = new Dfe(ffTaps: 2, fbTaps: 0);
         dfe.BeginRls(lambda: 0.95f, pInit: 1.0f);
-        Cf[] symbols = RandomBpsk(120, seed: 3);
+        Complex32[] symbols = RandomBpsk(120, seed: 3);
         float error = float.NaN;
         for (int i = 1; i < 120; i++)
         {
@@ -163,25 +162,25 @@ public class DfeTests
 
     // ------------------------------------------------------------ §B3.3 TIR shortening solve
 
-    private static Cf[] RandomPsk8(int count, int seed)
+    private static Complex32[] RandomPsk8(int count, int seed)
     {
         var random = new Random(seed);
-        var symbols = new Cf[count];
+        var symbols = new Complex32[count];
         for (int i = 0; i < count; i++)
         {
             double phi = random.Next(8) * Math.PI / 4;
-            symbols[i] = new Cf((float)Math.Cos(phi), (float)Math.Sin(phi));
+            symbols[i] = new Complex32((float)Math.Cos(phi), (float)Math.Sin(phi));
         }
 
         return symbols;
     }
 
-    private static Cf Gauss(Random random, float sigma)
+    private static Complex32 Gauss(Random random, float sigma)
     {
         double u1 = 1.0 - random.NextDouble();
         double u2 = random.NextDouble();
         double r = Math.Sqrt(-2.0 * Math.Log(u1)) * sigma;
-        return new Cf(
+        return new Complex32(
             (float)(r * Math.Cos(2 * Math.PI * u2)),
             (float)(r * Math.Sin(2 * Math.PI * u2)));
     }
@@ -193,18 +192,18 @@ public class DfeTests
     private static void AccumulateEchoRows(Dfe dfe, float echoGain, float sigma, int noiseSeed)
     {
         const int N = 400;
-        Cf[] x = RandomPsk8(N, seed: 42);
+        Complex32[] x = RandomPsk8(N, seed: 42);
         var noise = new Random(noiseSeed);
-        var y = new Cf[N];
+        var y = new Complex32[N];
         for (int u = 0; u < N; u++)
         {
-            Cf echo = u >= 5 ? x[u - 5] * echoGain : Cf.Zero;
+            Complex32 echo = u >= 5 ? x[u - 5] * echoGain : Complex32.Zero;
             y[u] = x[u] + echo + Gauss(noise, sigma);
         }
 
         dfe.BeginTraining();
-        Span<Cf> window = stackalloc Cf[dfe.FfTaps];
-        Span<Cf> past = stackalloc Cf[dfe.FbTaps];
+        Span<Complex32> window = stackalloc Complex32[dfe.FfTaps];
+        Span<Complex32> past = stackalloc Complex32[dfe.FbTaps];
         for (int u = 16; u < N; u++)
         {
             for (int i = 0; i < window.Length; i++)
@@ -256,18 +255,18 @@ public class DfeTests
         Dfe dfe, float gainMain, float gainAdjacent, float sigma, int noiseSeed)
     {
         const int N = 400;
-        Cf[] x = RandomPsk8(N, seed: 42);
+        Complex32[] x = RandomPsk8(N, seed: 42);
         var noise = new Random(noiseSeed);
-        var y = new Cf[N];
+        var y = new Complex32[N];
         for (int u = 0; u < N; u++)
         {
-            Cf echo = u >= 6 ? (x[u - 5] * gainMain) + (x[u - 6] * gainAdjacent) : Cf.Zero;
+            Complex32 echo = u >= 6 ? (x[u - 5] * gainMain) + (x[u - 6] * gainAdjacent) : Complex32.Zero;
             y[u] = x[u] + echo + Gauss(noise, sigma);
         }
 
         dfe.BeginTraining();
-        Span<Cf> window = stackalloc Cf[dfe.FfTaps];
-        Span<Cf> past = stackalloc Cf[dfe.FbTaps];
+        Span<Complex32> window = stackalloc Complex32[dfe.FfTaps];
+        Span<Complex32> past = stackalloc Complex32[dfe.FbTaps];
         for (int u = 16; u < N; u++)
         {
             for (int i = 0; i < window.Length; i++)
@@ -323,18 +322,18 @@ public class DfeTests
         Dfe dfe, float cursorGain, float echoGain, float sigma, int noiseSeed)
     {
         const int N = 400;
-        Cf[] x = RandomPsk8(N, seed: 42);
+        Complex32[] x = RandomPsk8(N, seed: 42);
         var noise = new Random(noiseSeed);
-        var y = new Cf[N];
+        var y = new Complex32[N];
         for (int u = 0; u < N; u++)
         {
-            Cf echo = u >= 5 ? x[u - 5] * echoGain : Cf.Zero;
+            Complex32 echo = u >= 5 ? x[u - 5] * echoGain : Complex32.Zero;
             y[u] = (x[u] * cursorGain) + echo + Gauss(noise, sigma);
         }
 
         dfe.BeginTraining();
-        Span<Cf> window = stackalloc Cf[dfe.FfTaps];
-        Span<Cf> past = stackalloc Cf[dfe.FbTaps];
+        Span<Complex32> window = stackalloc Complex32[dfe.FfTaps];
+        Span<Complex32> past = stackalloc Complex32[dfe.FbTaps];
         for (int u = 16; u < N; u++)
         {
             for (int i = 0; i < window.Length; i++)
@@ -380,8 +379,8 @@ public class DfeTests
 
         result.Solved.Should().BeTrue();
         result.Lag.Should().Be(0);
-        Cf[] expected = plain.SnapshotTaps();
-        Cf[] actual = tir.SnapshotTaps();
+        Complex32[] expected = plain.SnapshotTaps();
+        Complex32[] actual = tir.SnapshotTaps();
         for (int i = 0; i < expected.Length; i++)
         {
             (expected[i] - actual[i]).Abs().Should().BeLessThan(1e-6f, $"tap {i}");
@@ -400,19 +399,19 @@ public class DfeTests
         AccumulateEchoRows(hard, echoGain: 0.8f, sigma: 0.05f, noiseSeed: 46);
 
         const int N = 400;
-        Cf[] x = RandomPsk8(N, seed: 42);
+        Complex32[] x = RandomPsk8(N, seed: 42);
         var noiseZ = new Random(46);
-        var y = new Cf[N];
+        var y = new Complex32[N];
         for (int u = 0; u < N; u++)
         {
-            Cf echo = u >= 5 ? x[u - 5] * 0.8f : Cf.Zero;
+            Complex32 echo = u >= 5 ? x[u - 5] * 0.8f : Complex32.Zero;
             y[u] = x[u] + echo + Gauss(noiseZ, 0.05f);
         }
 
         zero.BeginTraining();
         soft.BeginTraining();
-        Span<Cf> window = stackalloc Cf[4];
-        Span<Cf> past = stackalloc Cf[8];
+        Span<Complex32> window = stackalloc Complex32[4];
+        Span<Complex32> past = stackalloc Complex32[8];
         Span<float> noVar = stackalloc float[8];
         Span<float> bigVar = stackalloc float[8];
         bigVar.Fill(0.5f);

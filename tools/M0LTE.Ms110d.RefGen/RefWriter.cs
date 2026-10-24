@@ -6,7 +6,6 @@ using System.Security.Cryptography;
 using System.Text;
 using M0LTE.Fec;
 using M0LTE.Ms110d.Fec;
-using M0LTE.Ofdm;
 
 namespace M0LTE.Ms110d.RefGen;
 
@@ -90,7 +89,7 @@ public static class RefWriter
     /// the cross-check against the library, to prove the check fires. Leave null.</param>
     public static void WriteCase(
         RefCase c, string caseDir, string gitCommit, bool dirty = false,
-        Action<List<Cf>>? corruptReferenceForTest = null)
+        Action<List<Complex32>>? corruptReferenceForTest = null)
     {
         Directory.CreateDirectory(caseDir);
         Ms110dTxSettings settings = c.Settings;
@@ -144,16 +143,16 @@ public static class RefWriter
         var scramble = new List<byte>();
         var data = new List<byte>();
         var burst = new List<byte>(preambleChips);
-        var probes = new List<Cf>();
-        var reference = new List<Cf>();
+        var probes = new List<Complex32>();
+        var reference = new List<Complex32>();
         foreach (byte chip in preambleChips)
         {
             reference.Add(Ms110dTables.Psk8[chip]);
         }
 
-        void AddProbe(List<Cf> values)
+        void AddProbe(List<Complex32> values)
         {
-            foreach (Cf v in values)
+            foreach (Complex32 v in values)
             {
                 burst.Add(ProbeMarker);
                 probes.Add(v);
@@ -240,7 +239,7 @@ public static class RefWriter
         corruptReferenceForTest?.Invoke(reference);
 
         // Cross-check against the library's own builder and modulator before writing anything.
-        Cf[] libSymbols = modulator.BuildSymbols(payload);
+        Complex32[] libSymbols = modulator.BuildSymbols(payload);
         if (libSymbols.Length != burst.Count)
         {
             throw new InvalidOperationException(
@@ -272,7 +271,7 @@ public static class RefWriter
         var bbIm = new float[length];
         for (int n = 0; n < libSymbols.Length; n++)
         {
-            Cf sym = libSymbols[n] * settings.Amplitude;
+            Complex32 sym = libSymbols[n] * settings.Amplitude;
             for (int t = 0; t < pulse.Length; t++)
             {
                 bbRe[(n * 4) + t] += sym.Re * pulse[t];
@@ -414,13 +413,13 @@ public static class RefWriter
     public const byte ProbeMarker = 255;
 
     // The probe symbols exactly as the library sends them, plus any EOT extension.
-    private static List<Cf> ProbeValues(int k, bool boundary, bool extend, out int extension)
+    private static List<Complex32> ProbeValues(int k, bool boundary, bool extend, out int extension)
     {
-        var result = new List<Cf>(MiniProbe.Get(k, boundary));
+        var result = new List<Complex32>(MiniProbe.Get(k, boundary));
         extension = 0;
         if (extend)
         {
-            (Cf[] baseSeq, int shift) = MiniProbe.Sequence(k);
+            (Complex32[] baseSeq, int shift) = MiniProbe.Sequence(k);
             int offset = boundary ? shift : 0;
             for (int i = k; i < k + 32; i++)
             {

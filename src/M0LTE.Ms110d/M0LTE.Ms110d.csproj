@@ -12,7 +12,6 @@
   <ItemGroup>
     <PackageReference Include="M0LTE.Dsp" />
     <PackageReference Include="M0LTE.Fec" />
-    <PackageReference Include="M0LTE.Ofdm" />
   </ItemGroup>
 
   <ItemGroup>

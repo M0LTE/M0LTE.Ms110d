@@ -1,4 +1,3 @@
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 using M0LTE.HfChannel;
 
@@ -87,12 +86,12 @@ public class Ms110dScatterDiagnostics
         }
 
         gainsOut.WriteLine("index,p0re,p0im,p1re,p1im");
-        IReadOnlyList<Cf[]> gains = channel.LastPathGains!;
+        IReadOnlyList<Complex32[]> gains = channel.PathGains()!;
         int count = Math.Max(gains[0].Length, gains[1].Length);
         for (int i = 0; i < count; i++)
         {
-            Cf g0 = gains[0][Math.Min(i, gains[0].Length - 1)];
-            Cf g1 = gains[1][Math.Min(i, gains[1].Length - 1)];
+            Complex32 g0 = gains[0][Math.Min(i, gains[0].Length - 1)];
+            Complex32 g1 = gains[1][Math.Min(i, gains[1].Length - 1)];
             gainsOut.WriteLine($"{i},{g0.Re:F5},{g0.Im:F5},{g1.Re:F5},{g1.Im:F5}");
         }
 

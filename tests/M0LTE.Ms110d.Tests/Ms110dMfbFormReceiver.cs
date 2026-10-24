@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Numerics;
 using M0LTE.Fec;
-using M0LTE.Ofdm;
 using M0LTE.Ms110d;
 using M0LTE.Ms110d.Fec;
 using M0LTE.HfChannel;
@@ -155,7 +154,7 @@ public class Ms110dMfbFormReceiver
         byte[] transcode8 = Ms110dTables.Transcode8Psk.ToArray();
         Complex Wire(int number, int u)
         {
-            Cf w = qam
+            Complex32 w = qam
                 ? Ms110dTables.Qam16[number ^ scr[u]]
                 : Ms110dTables.Psk8[(transcode8[number] + scr[u]) & 7];
             return new Complex(w.Re, w.Im);
@@ -163,7 +162,7 @@ public class Ms110dMfbFormReceiver
 
         Complex Point(int q)
         {
-            Cf w = qam ? Ms110dTables.Qam16[q] : Ms110dTables.Psk8[q];
+            Complex32 w = qam ? Ms110dTables.Qam16[q] : Ms110dTables.Psk8[q];
             return new Complex(w.Re, w.Im);
         }
 
@@ -181,7 +180,7 @@ public class Ms110dMfbFormReceiver
         // The demod runs first: its acquisition supplies CFO/timing, and the block-ready
         // seam lets us pull each block's ring span while it is resident.
         var demod = new Ms110dDemodulator(new Ms110dDemodOptions());
-        var spans = new List<(int Block, long[] FrameChips, long Hc0, Cf[] Ring)>();
+        var spans = new List<(int Block, long[] FrameChips, long Hc0, Complex32[] Ring)>();
         demod.InstrumentBlockReady = (blockIndex, frameChips) =>
         {
             if (blockIndex >= txBlocks)
@@ -191,7 +190,7 @@ public class Ms110dMfbFormReceiver
 
             long hc0 = (2 * (frameChips[0] - k32)) + (2 * ScanMin);
             long hcEnd = (2 * (frameChips[^1] + u256 + k32)) + (2 * ScanMax);
-            var ring = new Cf[hcEnd - hc0];
+            var ring = new Complex32[hcEnd - hc0];
             for (long hc = hc0; hc < hcEnd; hc++)
             {
                 ring[hc - hc0] = demod.RingReadT2(hc);
@@ -208,7 +207,7 @@ public class Ms110dMfbFormReceiver
         // energy support.
         int lMin;
         {
-            (int B0, long[] Fc0, long Hc00, Cf[] Ring0) = spans[0];
+            (int B0, long[] Fc0, long Hc00, Complex32[] Ring0) = spans[0];
             var profile = new double[ScanLen];
             var wGram = new Complex[ScanLen, ScanLen];
             var wRhs = new Complex[ScanLen];
@@ -218,7 +217,7 @@ public class Ms110dMfbFormReceiver
                 // Block 0's preceding probe is the preamble's closing probe, unshifted (see
                 // Ms110dMfbBlockDecoder.ProbeIsBoundary); B0 == 0 here by construction.
                 bool boundary = p != 0 && (p + 1) % frames == 0;
-                Cf[] probe = MiniProbe.Get(k32, boundary);
+                Complex32[] probe = MiniProbe.Get(k32, boundary);
                 Array.Clear(wRhs);
                 for (int i = 0; i < ScanLen; i++)
                 {
@@ -241,7 +240,7 @@ public class Ms110dMfbFormReceiver
                             continue;
                         }
 
-                        Cf x = probe[(src / 2) - ps];
+                        Complex32 x = probe[(src / 2) - ps];
                         var phiI = new Complex(x.Re, x.Im);
                         wRhs[i] += Complex.Conjugate(phiI) * row;
                         for (int j = i; j < ScanLen; j++)
@@ -252,7 +251,7 @@ public class Ms110dMfbFormReceiver
                                 continue;
                             }
 
-                            Cf xj = probe[(srcJ / 2) - ps];
+                            Complex32 xj = probe[(srcJ / 2) - ps];
                             Complex g = Complex.Conjugate(phiI) * new Complex(xj.Re, xj.Im);
                             wGram[i, j] += g;
                             if (j != i)
@@ -345,7 +344,7 @@ public class Ms110dMfbFormReceiver
             rungLines[rung] = new List<string>();
         }
 
-        foreach ((int b, long[] frameChips, long hc0, Cf[] ringCf) in spans)
+        foreach ((int b, long[] frameChips, long hc0, Complex32[] ringCf) in spans)
         {
             int n = ringCf.Length;
             var ring = new Complex[n];
@@ -371,7 +370,7 @@ public class Ms110dMfbFormReceiver
                 bool boundary = !(p == 0 && b == 0) && (preceding
                     ? (p + 1) % frames == 0
                     : (frames + 1) % frames == 0);
-                Cf[] probe = MiniProbe.Get(k32, boundary);
+                Complex32[] probe = MiniProbe.Get(k32, boundary);
 
                 Array.Clear(rhs);
                 for (int i = 0; i < lLen; i++)
@@ -396,7 +395,7 @@ public class Ms110dMfbFormReceiver
                         }
 
                         long c = src / 2;
-                        Cf x = probe[c - ps];
+                        Complex32 x = probe[c - ps];
                         var phiI = new Complex(x.Re, x.Im);
                         rhs[i] += Complex.Conjugate(phiI) * row;
                         for (int j = i; j < lLen; j++)
@@ -407,7 +406,7 @@ public class Ms110dMfbFormReceiver
                                 continue;
                             }
 
-                            Cf xj = probe[(srcJ / 2) - ps];
+                            Complex32 xj = probe[(srcJ / 2) - ps];
                             Complex g = Complex.Conjugate(phiI) * new Complex(xj.Re, xj.Im);
                             gram[i, j] += g;
                             if (j != i)
@@ -448,7 +447,7 @@ public class Ms110dMfbFormReceiver
                             continue;
                         }
 
-                        Cf x = probe[(src / 2) - ps];
+                        Complex32 x = probe[(src / 2) - ps];
                         model += h[i] * new Complex(x.Re, x.Im);
                     }
 
@@ -562,7 +561,7 @@ public class Ms110dMfbFormReceiver
                     bool preceding = p < frames;
                     long ps = preceding ? frameChips[p] - k32 : frameChips[^1] + u256;
                     bool boundary = !(p == 0 && b == 0) && (preceding ? (p + 1) % frames == 0 : (frames + 1) % frames == 0);
-                    Cf[] probe = MiniProbe.Get(k32, boundary);
+                    Complex32[] probe = MiniProbe.Get(k32, boundary);
                     for (int c = 0; c < k32; c++)
                     {
                         AddChip(ps + c, new Complex(probe[c].Re, probe[c].Im));
