@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/M0LTE.Ms110d/M0LTE.Ms110d.csproj" />
+    <ProjectReference Include="../../tools/M0LTE.Ms110d.RefGen/M0LTE.Ms110d.RefGen.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Writes per-stage transmit reference files for other-language ports. A tool, not a library:
+       never packed to NuGet. See docs/reference-files.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/M0LTE.Ms110d/M0LTE.Ms110d.csproj" />
+    <PackageReference Include="M0LTE.Fec" />
+    <PackageReference Include="M0LTE.Ofdm" />
+  </ItemGroup>
+
+</Project>
