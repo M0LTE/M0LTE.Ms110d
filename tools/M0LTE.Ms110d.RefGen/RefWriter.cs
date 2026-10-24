@@ -15,7 +15,7 @@ namespace M0LTE.Ms110d.RefGen;
 public static class RefWriter
 {
     /// <summary>Bump when the file layout or the meaning of any stage changes.</summary>
-    public const int FormatVersion = 1;
+    public const int FormatVersion = 2;
 
     /// <summary>The library version, without any "+commit" suffix.</summary>
     public static string PackageVersion()
@@ -26,18 +26,18 @@ public static class RefWriter
         return plus >= 0 ? v[..plus] : v;
     }
 
-    /// <summary>HEAD of the git checkout containing the current directory, "-dirty" appended
-    /// when the tree has uncommitted changes; "unknown" outside a checkout.</summary>
-    public static string GitCommit()
+    /// <summary>HEAD of the git checkout containing the current directory and whether the
+    /// tracked files have uncommitted changes; ("unknown", false) outside a checkout.</summary>
+    public static (string Commit, bool Dirty) GitState()
     {
         string? head = Git("rev-parse HEAD");
         if (head is null)
         {
-            return "unknown";
+            return ("unknown", false);
         }
 
         string? status = Git("status --porcelain --untracked-files=no");
-        return string.IsNullOrEmpty(status) ? head : head + "-dirty";
+        return (head, !string.IsNullOrEmpty(status));
     }
 
     private static string? Git(string args)
@@ -86,7 +86,11 @@ public static class RefWriter
     }
 
     /// <summary>Writes one case into <paramref name="caseDir"/> (created if missing).</summary>
-    public static void WriteCase(RefCase c, string caseDir, string gitCommit)
+    /// <param name="corruptReferenceForTest">Test hook: mutates the tool's own symbol stream before
+    /// the cross-check against the library, to prove the check fires. Leave null.</param>
+    public static void WriteCase(
+        RefCase c, string caseDir, string gitCommit, bool dirty = false,
+        Action<List<Cf>>? corruptReferenceForTest = null)
     {
         Directory.CreateDirectory(caseDir);
         Ms110dTxSettings settings = c.Settings;
@@ -101,6 +105,11 @@ public static class RefWriter
         byte[] payload = Payload(c.Seed, c.PayloadBits);
         byte[] framed = Ms110dFraming.BuildTxBits(payload, settings.AppendEom, il.InputBits);
         int blocks = framed.Length / il.InputBits;
+        int blocksExpected = Math.Max(1, (c.PayloadBits + (settings.AppendEom ? 32 : 0) + il.InputBits - 1) / il.InputBits);
+        if (blocks != blocksExpected)
+        {
+            throw new InvalidOperationException("framed length disagrees with the block-count rule");
+        }
 
         // Stages 2 to 4, block by block, using the same calls EncodeBlock makes.
         var encoded = new List<byte>();
@@ -228,12 +237,22 @@ public static class RefWriter
             }
         }
 
+        corruptReferenceForTest?.Invoke(reference);
+
         // Cross-check against the library's own builder and modulator before writing anything.
         Cf[] libSymbols = modulator.BuildSymbols(payload);
         if (libSymbols.Length != burst.Count)
         {
             throw new InvalidOperationException(
                 $"symbol count mismatch: library {libSymbols.Length}, reference {burst.Count}");
+        }
+
+        // Independent count: BurstSeconds is computed from sizes alone, and excludes the EOT extension.
+        long expectedSymbols = (long)Math.Round(modulator.BurstSeconds(payload.Length) * Ms110dTables.SymbolRate) + eotExtension;
+        if (libSymbols.Length != expectedSymbols || libSymbols.Length != burst.Count)
+        {
+            throw new InvalidOperationException(
+                $"symbol count: library {libSymbols.Length}, BurstSeconds rule {expectedSymbols}, reference {burst.Count}");
         }
 
         for (int i = 0; i < reference.Count; i++)
@@ -245,6 +264,36 @@ public static class RefWriter
         }
 
         float[] audio = modulator.Modulate(payload);
+
+        // Pulse shaping then mixing, repeated here so the baseband can be written separately.
+        float[] pulse = Ms110dModulator.DesignPulse(settings.RollOff);
+        int length = (libSymbols.Length * 4) + pulse.Length;
+        var bbRe = new float[length];
+        var bbIm = new float[length];
+        for (int n = 0; n < libSymbols.Length; n++)
+        {
+            Cf sym = libSymbols[n] * settings.Amplitude;
+            for (int t = 0; t < pulse.Length; t++)
+            {
+                bbRe[(n * 4) + t] += sym.Re * pulse[t];
+                bbIm[(n * 4) + t] += sym.Im * pulse[t];
+            }
+        }
+
+        if (audio.Length != length)
+        {
+            throw new InvalidOperationException("audio length disagrees with 4 x symbols + pulse taps");
+        }
+
+        for (int i = 0; i < length; i++)
+        {
+            double phase = 2.0 * Math.PI * 3.0 * i / 16.0;
+            float mixed = (float)((bbRe[i] * Math.Cos(phase)) - (bbIm[i] * Math.Sin(phase)));
+            if (mixed != audio[i])
+            {
+                throw new InvalidOperationException($"baseband mix differs from Modulate at sample {i}");
+            }
+        }
 
         // Write the files.
         var files = new List<(string Stage, string Name, byte[] Bytes, int Count)>();
@@ -266,20 +315,36 @@ public static class RefWriter
             BinaryPrimitives.WriteSingleLittleEndian(probeBytes.AsSpan((i * 8) + 4), probes[i].Im);
         }
 
-        Add("probe_values_cf32le", "09_probes.cf32", probeBytes, probes.Count);
+        Add("probe_values_cf32le", "10_probes.cf32", probeBytes, probes.Count);
+        var pulseBytes = new byte[pulse.Length * 4];
+        for (int i = 0; i < pulse.Length; i++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(pulseBytes.AsSpan(i * 4), pulse[i]);
+        }
+
+        Add("pulse_taps_f32le", "11_pulse.f32", pulseBytes, pulse.Length);
+        var bbBytes = new byte[length * 8];
+        for (int i = 0; i < length; i++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(bbBytes.AsSpan(i * 8), bbRe[i]);
+            BinaryPrimitives.WriteSingleLittleEndian(bbBytes.AsSpan((i * 8) + 4), bbIm[i]);
+        }
+
+        Add("baseband_cf32le", "12_baseband.cf32", bbBytes, length);
         var audioBytes = new byte[audio.Length * 4];
         for (int i = 0; i < audio.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(audioBytes.AsSpan(i * 4), audio[i]);
         }
 
-        Add("audio_f32le", "10_audio.f32", audioBytes, audio.Length);
+        Add("audio_f32le", "13_audio.f32", audioBytes, audio.Length);
 
         var m = new StringBuilder();
         void Kv(string k, object v) => m.Append(k).Append('=').Append(Convert.ToString(v, CultureInfo.InvariantCulture)).Append('\n');
         Kv("format_version", FormatVersion);
         Kv("package_version", PackageVersion());
         Kv("git_commit", gitCommit);
+        Kv("dirty", dirty ? "true" : "false");
         Kv("case", c.DirectoryName);
         Kv("seed", c.Seed);
         Kv("wn", c.WaveformNumber);
@@ -298,7 +363,9 @@ public static class RefWriter
         Kv("blocks", blocks);
         Kv("block_input_bits", il.InputBits);
         Kv("block_interleaver_bits", il.SizeBits);
-        Kv("frames_per_block", il.Frames);
+        // WN0 has no frames: its blocks are counted in 32-chip Walsh channel symbols instead.
+        Kv("frames_per_block", mode.Wn == 0 ? 0 : il.Frames);
+        Kv("walsh_symbols_per_block", mode.Wn == 0 ? il.Frames : 0);
         Kv("frame_data_symbols", mode.U);
         Kv("probe_symbols", mode.K);
         Kv("preamble_symbol_count", preambleChips.Length);
@@ -307,6 +374,7 @@ public static class RefWriter
         Kv("data_symbol_count", data.Count);
         Kv("burst_symbol_count", burst.Count);
         Kv("audio_sample_count", audio.Length);
+        Kv("pulse_tap_count", pulse.Length);
         foreach (var (stage, name, bytes, count) in files)
         {
             File.WriteAllBytes(Path.Combine(caseDir, name), bytes);
@@ -365,16 +433,17 @@ public static class RefWriter
     }
 
     /// <summary>Writes a whole case list under <paramref name="outDir"/> plus index.txt.</summary>
-    public static void WriteSet(IReadOnlyList<RefCase> cases, string outDir, string gitCommit)
+    public static void WriteSet(IReadOnlyList<RefCase> cases, string outDir, string gitCommit, bool dirty = false)
     {
         Directory.CreateDirectory(outDir);
         var index = new StringBuilder();
         index.Append("format_version=").Append(FormatVersion).Append('\n');
         index.Append("package_version=").Append(PackageVersion()).Append('\n');
         index.Append("git_commit=").Append(gitCommit).Append('\n');
+        index.Append("dirty=").Append(dirty ? "true" : "false").Append('\n');
         foreach (RefCase c in cases)
         {
-            WriteCase(c, Path.Combine(outDir, c.DirectoryName), gitCommit);
+            WriteCase(c, Path.Combine(outDir, c.DirectoryName), gitCommit, dirty);
             index.Append("case=").Append(c.DirectoryName).Append('\n');
         }
 

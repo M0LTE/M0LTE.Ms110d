@@ -10,10 +10,15 @@ public sealed record RefCase(
     ulong Seed,
     int PayloadBits,
     int PreambleSuperframes = 3,
-    int TlcBlocks = 0)
+    int TlcBlocks = 0,
+    bool AppendEom = true,
+    bool AppendEot = true,
+    float Amplitude = 0.5f,
+    double RollOff = 0.35)
 {
-    /// <summary>Directory name, e.g. <c>wn6_short_k7_s1_p100</c>; non-default preamble
-    /// settings add <c>_m{M}_t{N}</c>.</summary>
+    /// <summary>Directory name, e.g. <c>wn6_short_k7_s1_p100</c>; each non-default option
+    /// adds a suffix: <c>_m{M}_t{N}</c> (preamble), <c>_noeom</c>, <c>_noeot</c>,
+    /// <c>_amp{A}</c>, <c>_ro{R}</c>.</summary>
     public string DirectoryName
     {
         get
@@ -24,12 +29,31 @@ public sealed record RefCase(
                 name += $"_m{PreambleSuperframes}_t{TlcBlocks}";
             }
 
+            if (!AppendEom)
+            {
+                name += "_noeom";
+            }
+
+            if (!AppendEot)
+            {
+                name += "_noeot";
+            }
+
+            if (Amplitude != 0.5f)
+            {
+                name += "_amp" + Amplitude.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            if (RollOff != 0.35)
+            {
+                name += "_ro" + RollOff.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            }
+
             return name;
         }
     }
 
-    /// <summary>The transmit settings this case runs the library with (library defaults for
-    /// everything not listed: EOM and EOT on, amplitude 0.5, roll-off 0.35).</summary>
+    /// <summary>The transmit settings this case runs the library with .</summary>
     public Ms110dTxSettings Settings => new()
     {
         WaveformNumber = WaveformNumber,
@@ -37,5 +61,9 @@ public sealed record RefCase(
         ConstraintLength = ConstraintLength,
         PreambleSuperframes = PreambleSuperframes,
         TlcBlocks = TlcBlocks,
+        AppendEom = AppendEom,
+        AppendEot = AppendEot,
+        Amplitude = Amplitude,
+        RollOff = RollOff,
     };
 }
