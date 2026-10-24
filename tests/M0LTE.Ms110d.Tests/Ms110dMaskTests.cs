@@ -92,6 +92,7 @@ public class Ms110dMaskTests(ITestOutputHelper output)
         Assert.SkipWhen(wnFilter is not null && wnFilter != wn.ToString(),
             $"MS110D_MASK_WN={wnFilter} - skipping WN{wn}");
 
+        snrDb += double.TryParse(Environment.GetEnvironmentVariable("MS110D_MASK_SNR_DELTA"), out double delta) ? delta : 0;
         MaskRun run = RunPoint(wn, snrDb, [], TargetBits(), seed: 100 + wn + SeedOffset());
         Report($"AWGN WN{wn} @ {snrDb:+0;-0;0} dB{SeedTag()}", run);
         AssertMask(run);
@@ -160,6 +161,7 @@ public class Ms110dMaskTests(ITestOutputHelper output)
         long targetBits = Environment.GetEnvironmentVariable("MS110D_MASK_BITS") is null && wn is 2 or 5 or 6
             ? 6_000_000 : TargetBits();
 
+        snrDb += double.TryParse(Environment.GetEnvironmentVariable("MS110D_MASK_SNR_DELTA"), out double poorDelta) ? poorDelta : 0;
         MaskRun run = RunPoint(wn, snrDb, WattersonChannel.Poor, targetBits, seed: 500 + wn + SeedOffset(),
             minSimSeconds: 600);
         Report($"POOR WN{wn} @ {snrDb:+0;-0;0} dB{SeedTag()}", run);
@@ -314,6 +316,21 @@ public class Ms110dMaskTests(ITestOutputHelper output)
             Environment.GetEnvironmentVariable("MS110D_MASK_SEED_OFFSET"), out int o) ? o : 0;
     }
 
+    // Probe-pattern A/B (not a mask run: the D-LXIV/D-LXV points are specified at the Long
+    // interleaver, where both patterns coincide). MS110D_MASK_INTERLEAVER=Short|Medium|UltraShort
+    // runs the point at that interleaver; MS110D_MASK_STD_PROBES=1 sends the D.5.2.2 standard
+    // probe pattern. Reports are labelled by the caller, never gate evidence.
+    private static Ms110dInterleaverKind MaskInterleaver()
+    {
+        string? name = Environment.GetEnvironmentVariable("MS110D_MASK_INTERLEAVER");
+        return name is null ? Ms110dInterleaverKind.Long : Enum.Parse<Ms110dInterleaverKind>(name);
+    }
+
+    private static bool StandardProbes()
+    {
+        return Environment.GetEnvironmentVariable("MS110D_MASK_STD_PROBES") == "1";
+    }
+
     private static bool GenieMode()
     {
         return Environment.GetEnvironmentVariable("MS110D_MASK_GENIE") == "1";
@@ -394,12 +411,12 @@ public class Ms110dMaskTests(ITestOutputHelper output)
         var settings = new Ms110dTxSettings
         {
             WaveformNumber = wn,
-            Interleaver = Ms110dInterleaverKind.Long,
+            Interleaver = MaskInterleaver(),
             ConstraintLength = 7,
             PreambleSuperframes = 20,
         };
-        var tx = new Ms110dModulator(settings);
-        Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.Long);
+        var tx = new Ms110dModulator(settings) { StandardProbePattern = StandardProbes() };
+        Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, MaskInterleaver());
 
         // Uncoded-vs-coded telemetry (§5.3, phase-b-plan §B0): re-encode the known TX
         // stream per block and compare against sign(first-pass LLR) in wire order - the
@@ -448,7 +465,10 @@ public class Ms110dMaskTests(ITestOutputHelper output)
             "burst,channelSeed,bits,decoded,errors,firstErr,lastErr,collapses," +
             "uncodedErrs,deepFadeErrs,turboC,turboR,turboA,turboS,reason");
 
-        while (bits < targetBits || simSeconds < minSimSeconds)
+        // MS110D_MASK_BURSTS=N: N bursts in total (split over the workers) instead of a bit budget.
+        int fixedBursts = int.TryParse(Environment.GetEnvironmentVariable("MS110D_MASK_BURSTS"), out int nb)
+            ? (nb + Workers() - 1) / Workers() : 0;
+        while (fixedBursts > 0 ? bursts < fixedBursts : (bits < targetBits || simSeconds < minSimSeconds))
         {
             long uncodedErrsBefore = uncodedErrors;
             long deepFadeErrsBefore = deepFadeErrors;

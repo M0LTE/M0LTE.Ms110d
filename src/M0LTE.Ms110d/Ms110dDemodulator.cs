@@ -147,6 +147,14 @@ public sealed class Ms110dDemodulator
     private readonly Ms110dScrambler _scrambler = new();
     private long _frameChip;
     private int _frameInBlock;
+
+    // Which mini-probes of this burst are shifted: the current rule or the D.5.2.2 standard one
+    // (see ProbePattern). Decided per burst from the probes themselves; read by the
+    // block-level decoders through ProbePatternForBlocks.
+    private readonly ProbePattern _probePattern = new();
+    internal ProbePattern ProbePatternForBlocks => _probePattern;
+
+    internal bool ProbeShiftedAfter(long frameNumber) => _probePattern.Boundary(frameNumber);
     private int _badProbes;
     private double _probeMse;
     private double _probeGainRef;
@@ -1044,6 +1052,7 @@ public sealed class Ms110dDemodulator
         _turboExpected = new Complex32[blockSymbols];
         _blockLlrCount = 0;
         _blockIndex = 0;
+        _probePattern.Configure(_il.Frames, ProbePatternLongFrames(_mode.Wn));
         _burstBits.Clear();
         _dataStartChip = ChipsSuperframe * (long)(count + 1);
         _trackingInitialized = false;
@@ -1587,6 +1596,54 @@ public sealed class Ms110dDemodulator
         }
     }
 
+    /// <summary>Frame count of the waveform's Long interleaver, the standard pattern's period.</summary>
+    private static int ProbePatternLongFrames(int wn) =>
+        Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.Long).Frames;
+
+    /// <summary>Scores the two probe-pattern hypotheses for the probe at <paramref name="probeChip"/>
+    /// (the one after frame <paramref name="frameNumber"/>): each is run through the equalizer with
+    /// its own probe as the feedback history and compared with its own probe, so the wrong one
+    /// shows up as a large residual. Returns (mseCurrent - mseStandard) / (sum), in [-1, 1],
+    /// positive when the standard pattern fits better, 0 when neither fits (a fade). Read-only on the equalizer; one extra
+    /// probe-length pass, and only at probes where the rules disagree and the burst has not
+    /// yet settled.</summary>
+    private double ScoreProbePatterns(long probeChip, long frameNumber)
+    {
+        Ms110dMode mode = _mode!;
+        Dfe dfe = _dfe!;
+        Span<Complex32> window = stackalloc Complex32[dfe.FfTaps];
+        Span<Complex32> pastCurrent = stackalloc Complex32[dfe.FbTaps];
+        Span<Complex32> pastStandard = stackalloc Complex32[dfe.FbTaps];
+        Complex32[] current = MiniProbe.Get(mode.K, _probePattern.Current(frameNumber));
+        Complex32[] standard = MiniProbe.Get(mode.K, _probePattern.Standard(frameNumber));
+        double mseCurrent = 0;
+        double mseStandard = 0;
+        for (int i = dfe.FbTaps; i < mode.K; i++)
+        {
+            FillWindowEst(probeChip + i, window);
+            for (int j = 0; j < dfe.FbTaps; j++)
+            {
+                pastCurrent[j] = current[i - 1 - j];
+                pastStandard[j] = standard[i - 1 - j];
+            }
+
+            mseCurrent += (dfe.Equalize(window, pastCurrent) - current[i]).MagnitudeSquared();
+            mseStandard += (dfe.Equalize(window, pastStandard) - standard[i]).MagnitudeSquared();
+        }
+
+        // A faded or noisy probe fits neither hypothesis (the equalizer output is near zero, so
+        // each residual is about the probe's own energy): it says nothing, and must not tip the
+        // sum. A probe that fits one hypothesis leaves at most a small fraction of unit energy.
+        double rows = mode.K - dfe.FbTaps;
+        if (Math.Min(mseCurrent, mseStandard) > 0.5 * rows)
+        {
+            return 0;
+        }
+
+        double total = mseCurrent + mseStandard;
+        return total > 0 ? (mseCurrent - mseStandard) / total : 0;
+    }
+
     private void ProcessFrame()
     {
         Ms110dMode mode = _mode!;
@@ -1601,9 +1658,15 @@ public sealed class Ms110dDemodulator
         // Probe-directed batch-LS: known symbols accumulate into the Gram with
         // authoritative weight; the ridge-regularized solve (anchored to current taps)
         // handles the probe's rank deficiency (≤16 distinct patterns for 36+ taps).
-        bool boundary = (_frameInBlock + 2) % _il!.Frames == 0;
-        Complex32[] probe = MiniProbe.Get(mode.K, boundary);
         long probeChip = _frameChip + mode.U;
+        long frameNumber = ((long)_blockIndex * _il!.Frames) + _frameInBlock;
+        if (_probePattern.NeedsEvidence(frameNumber))
+        {
+            // The two shifted-probe conventions disagree here: let the received probe pick.
+            _probePattern.AddEvidence(ScoreProbePatterns(probeChip, frameNumber));
+        }
+
+        Complex32[] probe = MiniProbe.Get(mode.K, _probePattern.Boundary(frameNumber));
         Complex32[] startTaps = dfe.SnapshotTaps();
         var probePhase = Complex32.Zero;
         double mse = 0;
@@ -3494,7 +3557,7 @@ public sealed class Ms110dDemodulator
             int rows = 0;
             for (int p = 0; p < 2; p++)
             {
-                Complex32[] probe = MiniProbe.Get(mode.K, boundary: (f + p + 1) % _il!.Frames == 0);
+                Complex32[] probe = MiniProbe.Get(mode.K, boundary: ProbeShiftedAfter(((long)_blockIndex * _il!.Frames) + f + p - 1));
                 long probeChip = p == 0 ? frameChip - mode.K : frameChip + mode.U;
                 for (int i = fb; i < mode.K; i++)
                 {
@@ -3562,8 +3625,8 @@ public sealed class Ms110dDemodulator
         for (int f = 0; f < _il!.Frames; f++)
         {
             long frameChip = _blockFrameChips[f];
-            Complex32[] precedingProbe = MiniProbe.Get(mode.K, boundary: (f + 1) % _il.Frames == 0);
-            Complex32[] followingProbe = MiniProbe.Get(mode.K, boundary: (f + 2) % _il.Frames == 0);
+            Complex32[] precedingProbe = MiniProbe.Get(mode.K, boundary: ProbeShiftedAfter(((long)_blockIndex * _il.Frames) + f - 1));
+            Complex32[] followingProbe = MiniProbe.Get(mode.K, boundary: ProbeShiftedAfter(((long)_blockIndex * _il.Frames) + f));
 
             int solveRows = AccumulateProbeRows(f, window, past);
             if (solveRows == 0)
@@ -4082,7 +4145,7 @@ public sealed class Ms110dDemodulator
             // (For the first frame of the first block it is really the preamble-ending
             // probe, boundary false - which (f+1) % Frames == 0 also yields for every
             // multi-frame interleaver.)
-            Complex32[] precedingProbe = MiniProbe.Get(mode.K, boundary: (f + 1) % _il.Frames == 0);
+            Complex32[] precedingProbe = MiniProbe.Get(mode.K, boundary: ProbeShiftedAfter(((long)_blockIndex * _il.Frames) + f - 1));
 
             // Batch-LS shortening solve (§B3.3 TIR): the feedback columns carry the
             // wire-domain symbol history (probe tail before u = 0), so the joint solve can
@@ -4140,7 +4203,7 @@ public sealed class Ms110dDemodulator
             // as labels improve.
             if (qamWire)
             {
-                Complex32[] followingProbe = MiniProbe.Get(mode.K, boundary: (f + 2) % _il.Frames == 0);
+                Complex32[] followingProbe = MiniProbe.Get(mode.K, boundary: ProbeShiftedAfter(((long)_blockIndex * _il.Frames) + f));
                 for (int p = 0; p < 2; p++)
                 {
                     Complex32[] probe = p == 0 ? precedingProbe : followingProbe;
@@ -4482,7 +4545,7 @@ public sealed class Ms110dDemodulator
                 truthEcho = segEcho || h2Avg.MagnitudeSquared() > 0f;
                 truthXtaps = TruthGaugeXtaps;
                 truthParts = Math.Clamp(TruthGaugeSplit, 1, 2);
-                truthFollow = MiniProbe.Get(mode.K, boundary: (f + 2) % _il.Frames == 0);
+                truthFollow = MiniProbe.Get(mode.K, boundary: ProbeShiftedAfter(((long)_blockIndex * _il.Frames) + f));
 
                 // Compact unknown list → gauge slots; inactive slots stay zero so the
                 // assembly reads are branch-free on the layout.
@@ -5010,6 +5073,7 @@ public sealed class Ms110dDemodulator
         _trackingInitialized = false;
         _blockLlrCount = 0;
         _blockIndex = 0;
+        _probePattern.Reset();
         _burstBits.Clear();
         // A burst ending mid-block (SignalLost/Terminate/EOM) must not leak this
         // block's frame positions or fading state into the next burst's turbo gate

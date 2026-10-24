@@ -109,7 +109,6 @@ internal sealed class Ms110dMfbBlockDecoder
 
     private bool _windowSet;
     private int _lMin;
-    private bool _firstBlock;
 
     // G2d: the MMSE cold rung (Poor-gate successor program, evidence 2026-08-20-poorgate-g2).
     // Per-symbol linear MMSE over the response window at the uncancelled rung, known
@@ -125,26 +124,21 @@ internal sealed class Ms110dMfbBlockDecoder
     private double _anchorResidSum;
     private long _anchorResidRows;
 
-    // Which mini-probe sits at anchor p of a block (D.5.2.2): the probe after the
-    // second-to-last data frame of each interleaver block is cyclically shifted, so the
-    // probe PRECEDING frame p is shifted when (p + 1) % frames == 0 and the probe
-    // FOLLOWING the last frame when (frames + 1) % frames == 0. With one frame per
-    // block every probe is shifted - except the one that ends the preamble, which the
-    // modulator emits unshifted, so block 0's preceding probe is never a boundary probe.
-    // For every interleaver with more than one frame per block this is the expression
-    // the W5b2 port shipped, so the Long-interleaver batteries are unmoved by it; it
-    // was found by the G1d hermetic loopback of WN7 UltraShort (evidence
-    // 2026-08-20-poorgate-g1d), where the wrong first anchor made the whole block's
-    // model garbage.
+    // Which mini-probe sits at anchor p of a block (D.5.2.2): the probe PRECEDING frame p
+    // (p < frames) follows frame p - 1, and anchor p == frames is the probe FOLLOWING the
+    // last frame. Whether that probe is cyclically shifted is the burst's probe pattern
+    // (ProbePattern: the current rule or the standard one, whichever the demodulator's
+    // per-probe scoring has found), asked by absolute frame number. The preamble-ending
+    // probe (frame -1) is never shifted, which is what makes block 0's preceding probe
+    // unshifted even with one frame per block.
     private bool ProbeIsBoundary(int p, int frames)
     {
-        if (p == 0 && _firstBlock)
-        {
-            return false;
-        }
-
-        return p < frames ? (p + 1) % frames == 0 : (frames + 1) % frames == 0;
+        long after = _blockBase + (p < frames ? p - 1 : frames - 1);
+        return _pattern.Boundary(after);
     }
+
+    private ProbePattern _pattern = new();
+    private long _blockBase;
 
     public Ms110dMfbBlockDecoder(
         Ms110dMode mode, Ms110dInterleaverParams il, ConvolutionalCode code,
@@ -289,7 +283,8 @@ internal sealed class Ms110dMfbBlockDecoder
         int n = (int)(hcEnd - hc0);
         _lastHc0 = hc0;
         _lastN = n;
-        _firstBlock = demod.BlockIndex == 0;
+        _pattern = demod.ProbePatternForBlocks;
+        _blockBase = (long)demod.BlockIndex * frames;
         for (long hc = hc0; hc < hcEnd; hc++)
         {
             Complex32 v = demod.RingReadT2(hc);

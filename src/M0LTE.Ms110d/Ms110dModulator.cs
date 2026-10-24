@@ -52,6 +52,11 @@ public sealed class Ms110dModulator
     /// <summary>The mode row this transmitter is configured for.</summary>
     public Ms110dMode Mode => _mode;
 
+    /// <summary>Test hook, not part of the public API: mark the shifted mini-probes with the
+    /// D.5.2.2 standard rule (long interleaver boundary only) instead of the selected
+    /// interleaver's boundary this transmitter sends by default.</summary>
+    internal bool StandardProbePattern { get; set; }
+
     /// <summary>Modulates payload bits (0/1 bytes) into one complete burst at 9600 Hz.</summary>
     public float[] Modulate(ReadOnlySpan<byte> payloadBits)
     {
@@ -130,7 +135,11 @@ public sealed class Ms110dModulator
                 // The probe after the second-to-last data block of each interleaver block
                 // is cyclically shifted (D.5.2.2). With one frame per block every probe
                 // precedes a boundary and is shifted.
-                bool boundary = (f + 2) % il.Frames == 0;
+                long frameNumber = ((long)b * il.Frames) + f;
+                bool boundary = StandardProbePattern
+                    ? ProbePattern.StandardRule(
+                        frameNumber, Ms110dInterleaverParams.Get3k(_mode.Wn, Ms110dInterleaverKind.Long).Frames)
+                    : (f + 2) % il.Frames == 0;
                 bool last = b == blocks - 1 && f == il.Frames - 1;
                 AppendProbe(symbols, boundary, extend: last && _settings.AppendEot);
             }
