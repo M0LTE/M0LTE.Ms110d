@@ -8,6 +8,10 @@ No open implementation of Appendix D and no public off-air recording of it were 
 
 The equaliser and the soft tail-biting decoder are textbook DSP designed from the probe structure alone (Proakis chapters 9 and 10 for the DFE, Haykin for NLMS, wrap-extension for tail-biting decoding). No AGPL source, mars-suite or otherwise, was consulted.
 
+## No codec2-derived dependency
+
+M0LTE.Ms110d depends on no codec2-derived package. Since 0.2.0 it uses its own single-precision complex struct, `Complex32`, written fresh for this package from the members the modem uses and textbook complex arithmetic. It replaced the `Cf` type of `M0LTE.Ofdm`, which carries codec2 lineage, and the `M0LTE.Ofdm` reference (and `M0LTE.FecLdpc` with it) is gone from the shipped package. The switch was proven not to change anything on air: the standard reference file set (docs/reference-files.md) is byte-identical before and after. The test project still sees `M0LTE.Ofdm` transitively, only because the `M0LTE.HfChannel` test dependency exposes it; nothing shipped does.
+
 ## The design records
 
 The source comments cite paths under `docs/dev/ms110d/`. Those are in the pdn-soundmodem repository, not this one: the transcribed tables and their verification ([docs/dev/ms110d/tables](https://github.com/packet-net/pdn-soundmodem/tree/main/docs/dev/ms110d/tables)), the [design](https://github.com/packet-net/pdn-soundmodem/blob/main/docs/dev/ms110d/design.md), and the standard itself. The per-waveform parameter table moved here as [docs/waveforms.md](docs/waveforms.md). Other `docs/dev/...` paths and `#N` issue numbers in comments refer to pdn-soundmodem too.
