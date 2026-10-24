@@ -154,7 +154,7 @@ public sealed class Ms110dDemodulator
     private readonly ProbePattern _probePattern = new();
     internal ProbePattern ProbePatternForBlocks => _probePattern;
 
-    private bool ProbeShiftedAfter(long frameNumber) => _probePattern.Boundary(frameNumber);
+    internal bool ProbeShiftedAfter(long frameNumber) => _probePattern.Boundary(frameNumber);
     private int _badProbes;
     private double _probeMse;
     private double _probeGainRef;

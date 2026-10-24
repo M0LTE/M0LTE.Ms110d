@@ -157,6 +157,9 @@ public class Ms110dProbePatternTests(ITestOutputHelper output)
             demod.Process(new float[1500]);
             demod.Process(audio.AsSpan(0, audio.Length - 4000 - lastBlockSamples - 400).ToArray());
 
+            demod.ProbePatternForBlocks.PeakEvidence.Should().BeLessThan(
+                ProbePattern.SwitchEvidence,
+                $"the running score of a faded current-pattern burst (seed {seed}) must never reach the switch threshold");
             for (long g = 0; g < 20L * il.Frames; g++)
             {
                 if (ProbePattern.CurrentRule(g, il.Frames))
@@ -165,6 +168,33 @@ public class Ms110dProbePatternTests(ITestOutputHelper output)
                         $"a faded current-pattern burst (seed {seed}) must stay on the current pattern at frame {g}");
                 }
             }
+        }
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(13)]
+    public void Preamble_End_Probe_Is_Unshifted_Before_The_First_UltraShort_Block(int wn)
+    {
+        // The turbo paths ask for the probe preceding frame 0 of block 0 (frame number -1).
+        // With one or two frames per block the old modulo expression called it shifted;
+        // it is the probe that ends the preamble and is never shifted, under either pattern.
+        Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.UltraShort);
+        Ms110dMode mode = Ms110dMode.Mode3k(wn);
+        foreach (bool standard in new[] { false, true })
+        {
+            byte[] payload = RandomBits((4 * il.InputBits) - 40, 8500 + wn);
+            float[] audio = Transmit(wn, Ms110dInterleaverKind.UltraShort, standard, payload, awgn: false, seed: 1);
+            int lastBlockSamples = il.Frames * (mode.U + mode.K) * 4;
+            var demod = new Ms110dDemodulator();
+            demod.Process(new float[1500]);
+            demod.Process(audio.AsSpan(0, audio.Length - 4000 - lastBlockSamples - 400).ToArray());
+
+            // The receiver is locked on the burst (burst state is configured). Block 0 of the burst: the probe before its first frame is the preamble-end probe.
+            demod.ProbePatternForBlocks.Boundary(-1).Should().BeFalse();
+            demod.ProbeShiftedAfter(-1).Should().BeFalse();
         }
     }
 

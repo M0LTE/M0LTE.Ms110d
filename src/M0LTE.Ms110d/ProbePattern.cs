@@ -33,7 +33,7 @@ internal sealed class ProbePattern
     // The standard pattern is followed once the summed score is clearly positive: one
     // decisive probe (scores of real probes were 0.54 to 0.99 for the right hypothesis), never
     // a provisional sign. Faded probes score 0 and so never move the sum.
-    private const double SwitchEvidence = 0.5;
+    internal const double SwitchEvidence = 0.5;
 
     private int _frames = 1;
     private int _longFrames = 1;
@@ -54,10 +54,14 @@ internal sealed class ProbePattern
         _evidence = 0;
         _locked = false;
         Scored = 0;
+        PeakEvidence = 0;
     }
 
     /// <summary>How many probes have been scored this burst (diagnostic).</summary>
     internal int Scored { get; private set; }
+
+    /// <summary>Highest running score this burst (diagnostic, for tests).</summary>
+    internal double PeakEvidence { get; private set; }
 
     /// <summary>The evidence is conclusive and no more probes are scored.</summary>
     public bool Locked => _locked;
@@ -90,6 +94,7 @@ internal sealed class ProbePattern
     {
         Scored++;
         _evidence += score;
+        PeakEvidence = Math.Max(PeakEvidence, _evidence);
         if (Math.Abs(_evidence) >= LockEvidence)
         {
             _locked = true;
