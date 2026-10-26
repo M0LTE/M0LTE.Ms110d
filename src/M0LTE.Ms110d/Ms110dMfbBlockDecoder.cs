@@ -126,18 +126,16 @@ internal sealed class Ms110dMfbBlockDecoder
 
     // Which mini-probe sits at anchor p of a block (D.5.2.2): the probe PRECEDING frame p
     // (p < frames) follows frame p - 1, and anchor p == frames is the probe FOLLOWING the
-    // last frame. Whether that probe is cyclically shifted is the burst's probe pattern
-    // (ProbePattern: the current rule or the standard one, whichever the demodulator's
-    // per-probe scoring has found), asked by absolute frame number. The preamble-ending
-    // probe (frame -1) is never shifted, which is what makes block 0's preceding probe
-    // unshifted even with one frame per block.
+    // last frame. Whether that probe is cyclically shifted is the D.5.2.2 rule (ProbePattern),
+    // asked by absolute frame number: only at the Long interleaver's boundary, whatever
+    // interleaver is selected. The preamble-ending probe (frame -1) is never shifted.
     private bool ProbeIsBoundary(int p, int frames)
     {
         long after = _blockBase + (p < frames ? p - 1 : frames - 1);
-        return _pattern.Boundary(after);
+        return ProbePattern.ShiftedAfter(after, _longFrames);
     }
 
-    private ProbePattern _pattern = new();
+    private readonly int _longFrames;
     private long _blockBase;
 
     public Ms110dMfbBlockDecoder(
@@ -152,6 +150,7 @@ internal sealed class Ms110dMfbBlockDecoder
         _interleaver = interleaver;
         _viterbi = viterbi;
         _siso = siso;
+        _longFrames = ProbePattern.LongFrames(mode.Wn);
 
         int u = mode.U;
         int k = mode.K;
@@ -283,7 +282,6 @@ internal sealed class Ms110dMfbBlockDecoder
         int n = (int)(hcEnd - hc0);
         _lastHc0 = hc0;
         _lastN = n;
-        _pattern = demod.ProbePatternForBlocks;
         _blockBase = (long)demod.BlockIndex * frames;
         for (long hc = hc0; hc < hcEnd; hc++)
         {

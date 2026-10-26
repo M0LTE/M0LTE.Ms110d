@@ -9,7 +9,7 @@ namespace M0LTE.Ms110d;
 /// sub-carrier (Table D-I), SRRC 35 % pulse shaping (D.5.1.5), native 9600 Hz
 /// (4 samples/symbol - design §4.3). TX construction is byte-exact to spec: preamble
 /// (D.5.2.1) → initial mini-probe → [U data + K probe] frames with per-frame scrambler reset
-/// (D.5.1.3) and the interleaver-boundary probe cyclically shifted (D.5.2.2); WN 0 sends
+/// (D.5.1.3) and the long-interleaver-boundary probe cyclically shifted (D.5.2.2); WN 0 sends
 /// continuous Walsh channel symbols with no probes (D.5.2).
 /// </summary>
 public sealed class Ms110dModulator
@@ -51,11 +51,6 @@ public sealed class Ms110dModulator
 
     /// <summary>The mode row this transmitter is configured for.</summary>
     public Ms110dMode Mode => _mode;
-
-    /// <summary>Test hook, not part of the public API: mark the shifted mini-probes with the
-    /// D.5.2.2 standard rule (long interleaver boundary only) instead of the selected
-    /// interleaver's boundary this transmitter sends by default.</summary>
-    internal bool StandardProbePattern { get; set; }
 
     /// <summary>Modulates payload bits (0/1 bytes) into one complete burst at 9600 Hz.</summary>
     public float[] Modulate(ReadOnlySpan<byte> payloadBits)
@@ -110,6 +105,7 @@ public sealed class Ms110dModulator
         AppendProbe(symbols, boundary: false, extend: false);
 
         var scrambler = new Ms110dScrambler();
+        int longFrames = ProbePattern.LongFrames(_mode.Wn);
         for (int b = 0; b < blocks; b++)
         {
             byte[] fetched = Ms110dFraming.EncodeBlock(
@@ -132,14 +128,12 @@ public sealed class Ms110dModulator
                     }
                 }
 
-                // The probe after the second-to-last data block of each interleaver block
-                // is cyclically shifted (D.5.2.2). With one frame per block every probe
-                // precedes a boundary and is shifted.
+                // The probe after the second-to-last data frame of each LONG interleaver
+                // block is cyclically shifted (D.5.2.2), whatever interleaver is selected:
+                // frames are counted across the burst, so with a shorter interleaver only
+                // some blocks carry a shifted probe.
                 long frameNumber = ((long)b * il.Frames) + f;
-                bool boundary = StandardProbePattern
-                    ? ProbePattern.StandardRule(
-                        frameNumber, Ms110dInterleaverParams.Get3k(_mode.Wn, Ms110dInterleaverKind.Long).Frames)
-                    : (f + 2) % il.Frames == 0;
+                bool boundary = ProbePattern.ShiftedAfter(frameNumber, longFrames);
                 bool last = b == blocks - 1 && f == il.Frames - 1;
                 AppendProbe(symbols, boundary, extend: last && _settings.AppendEot);
             }

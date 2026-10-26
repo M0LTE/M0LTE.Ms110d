@@ -96,7 +96,7 @@ The puncture rule for the waveform's code rate is Table D-L; `03_punctured.bits`
 
 ### Burst layout (09)
 
-For WN0: the preamble, then every data chip of every block, with no probes and no EOT. For the other waveforms: the preamble, an initial mini-probe of `probe_symbols` symbols, then for each block `frames_per_block` frames of `frame_data_symbols` data symbols each followed by a mini-probe; the last probe is followed by `eot_extension_symbols` extra symbols (32, or 0 when EOT is off) which are also marked 255. The probe before an interleaver boundary is the cyclically shifted one; its values are in the probes file, so a port compares against them rather than re-deriving the shift.
+For WN0: the preamble, then every data chip of every block, with no probes and no EOT. For the other waveforms: the preamble, an initial mini-probe of `probe_symbols` symbols, then for each block `frames_per_block` frames of `frame_data_symbols` data symbols each followed by a mini-probe; the last probe is followed by `eot_extension_symbols` extra symbols (32, or 0 when EOT is off) which are also marked 255. Counting data frames from 0 across the burst, the probe after frame g is the cyclically shifted one when g mod L = L - 2, L the waveform's Long interleaver frame count, whatever interleaver the case uses (D.5.2.2; the probe ending the preamble is never shifted). So with a shorter interleaver most blocks have no shifted probe, and a short burst may have none. The values are in the probes file, so a port compares against them rather than re-deriving the shift.
 
 In WN0 manifests `frames_per_block` is 0 (there are no frames) and `walsh_symbols_per_block` gives the number of 32-chip channel symbols per block (the library's table calls this the frame count for WN0). It is 0 for the other waveforms.
 
@@ -119,6 +119,8 @@ The library builds the whole burst inside one internal method, so the tool repea
 ## Versioning and history
 
 `format_version` changes whenever a file's layout or meaning changes. `package_version`, `git_commit` and `dirty` say which C# produced the files; a port pins the reference set it was tested against.
+
+Package 0.3.0 changed which probes are shifted (the D.5.2.2 rule above; up to 0.2.1 the probe before every selected-interleaver boundary was shifted) without changing any file's layout, so `format_version` stays 2. For the Long interleaver the two rules agree, and WN0 has no probes, so between the 0.2.1 and 0.3.0 sets only the ultra-short, short and medium cases of WN1 to WN13 differ, and only in `10_probes.cf32`, `12_baseband.cf32` and `13_audio.f32` (plus the manifests' version lines).
 
 - **2**: stage files renumbered so every number is unique (probes is now 10, audio 13); added the pulse taps (11) and the pre-mixing baseband (12); added `dirty`, `walsh_symbols_per_block` and `pulse_tap_count` to the manifest; WN0 `frames_per_block` is now 0; added options for EOM off, EOT off, amplitude and roll-off, and the ultra-short and medium interleavers to the standard set.
 - **1**: first version.

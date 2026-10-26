@@ -194,6 +194,7 @@ public static class RefWriter
             initialProbe = mode.K;
             AddProbe(ProbeValues(mode.K, boundary: false, extend: false, out _));
             var scrambler = new Ms110dScrambler();
+            int longFrames = Ms110dInterleaverParams.Get3k(mode.Wn, Ms110dInterleaverKind.Long).Frames;
             int qamBits = 4;
             for (int b = 0; b < blocks; b++)
             {
@@ -227,7 +228,11 @@ public static class RefWriter
                         reference.Add(mode.Modulation == Ms110dModulation.Qam16 ? Ms110dTables.Qam16[d] : Ms110dTables.Psk8[d]);
                     }
 
-                    bool boundary = (f + 2) % il.Frames == 0;
+                    // D.5.2.2: the probe after frame g (counted across the burst) is shifted
+                    // only when g % L == L - 2, L the waveform's Long interleaver frame count,
+                    // whatever interleaver this case uses.
+                    long g = ((long)b * il.Frames) + f;
+                    bool boundary = g % longFrames == longFrames - 2;
                     bool last = b == blocks - 1 && f == il.Frames - 1;
                     bool extend = last && settings.AppendEot;
                     AddProbe(ProbeValues(mode.K, boundary, extend, out int ext));

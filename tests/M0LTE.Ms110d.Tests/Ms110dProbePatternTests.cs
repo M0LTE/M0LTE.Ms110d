@@ -3,14 +3,20 @@ using M0LTE.HfChannel;
 namespace M0LTE.Ms110d.Tests;
 
 /// <summary>
-/// The receiver accepts both conventions for which mini-probes are cyclically shifted: the one
-/// this library has always sent (shifted at the selected interleaver's boundary) and the
-/// D.5.2.2 one (shifted only at the Long interleaver's boundary). The standard pattern is
-/// produced here through the modulator's internal test switch; the default stays the old one.
+/// Which mini-probes are cyclically shifted follows D.5.2.2 at both ends: the probe after
+/// frame g (counted across the burst) is shifted only when g % L == L - 2, L the waveform's
+/// Long interleaver frame count, whatever interleaver is selected. Up to 0.2.x the library
+/// shifted at the selected interleaver's boundary instead; that pattern is gone.
 /// </summary>
-public class Ms110dProbePatternTests(ITestOutputHelper output)
+public class Ms110dProbePatternTests
 {
     private static readonly int[] Waveforms = [1, 2, 3, 4, 5, 6, 7, 8, 13];
+
+    private static readonly Ms110dInterleaverKind[] Interleavers =
+    [
+        Ms110dInterleaverKind.UltraShort, Ms110dInterleaverKind.Short,
+        Ms110dInterleaverKind.Medium, Ms110dInterleaverKind.Long,
+    ];
 
     // Table D-LXIV AWGN mask SNR per waveform (dB); the loopbacks run a modest margin above it.
     private static double MaskSnr(int wn) => wn switch
@@ -31,24 +37,31 @@ public class Ms110dProbePatternTests(ITestOutputHelper output)
         return bits;
     }
 
-    public static TheoryData<int, Ms110dInterleaverKind, bool, bool> Matrix()
+    public static TheoryData<int, Ms110dInterleaverKind, bool> Matrix()
     {
-        var data = new TheoryData<int, Ms110dInterleaverKind, bool, bool>();
+        var data = new TheoryData<int, Ms110dInterleaverKind, bool>();
         foreach (int wn in Waveforms)
         {
-            // Long: both rules coincide, covered by Long_Interleaver_Sends_Identical_Audio_Under_Both_Patterns.
-            foreach (Ms110dInterleaverKind kind in new[]
+            foreach (Ms110dInterleaverKind kind in Interleavers)
             {
-                Ms110dInterleaverKind.UltraShort, Ms110dInterleaverKind.Short, Ms110dInterleaverKind.Medium,
-            })
-            {
-                foreach (bool standard in new[] { false, true })
+                foreach (bool awgn in new[] { false, true })
                 {
-                    foreach (bool awgn in new[] { false, true })
-                    {
-                        data.Add(wn, kind, standard, awgn);
-                    }
+                    data.Add(wn, kind, awgn);
                 }
+            }
+        }
+
+        return data;
+    }
+
+    public static TheoryData<int, Ms110dInterleaverKind> Modes()
+    {
+        var data = new TheoryData<int, Ms110dInterleaverKind>();
+        foreach (int wn in Waveforms)
+        {
+            foreach (Ms110dInterleaverKind kind in Interleavers)
+            {
+                data.Add(wn, kind);
             }
         }
 
@@ -67,17 +80,14 @@ public class Ms110dProbePatternTests(ITestOutputHelper output)
     }
 
     private static float[] Transmit(
-        int wn, Ms110dInterleaverKind kind, bool standard, byte[] payload, bool awgn, int seed, bool eot = true)
+        int wn, Ms110dInterleaverKind kind, byte[] payload, bool awgn, int seed, bool eot = true)
     {
         var tx = new Ms110dModulator(new Ms110dTxSettings
         {
             WaveformNumber = wn,
             Interleaver = kind,
             AppendEot = eot,
-        })
-        {
-            StandardProbePattern = standard,
-        };
+        });
         float[] audio = tx.Modulate(payload);
         if (!awgn)
         {
@@ -88,15 +98,27 @@ public class Ms110dProbePatternTests(ITestOutputHelper output)
         return channel.Apply(audio, snrDb: MaskSnr(wn) + 8, leadInSamples: 1500, leadOutSamples: 4000);
     }
 
-    [Theory]
-    [MemberData(nameof(Matrix))]
-    public void Every_Mode_And_Interleaver_Loops_Back_Under_Both_Patterns(
-        int wn, Ms110dInterleaverKind kind, bool standard, bool awgn)
+    // Feeds a clean burst (no channel lead-out) up to just before its last block completes,
+    // so the receiver is still locked on it (the end of a burst resets the burst state).
+    private static Ms110dDemodulator ReceiveAllButLastBlock(int wn, Ms110dInterleaverKind kind, float[] audio)
     {
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, kind);
-        // Two interleaver blocks, so the stream carries more than one boundary.
+        Ms110dMode mode = Ms110dMode.Mode3k(wn);
+        int lastBlockSamples = il.Frames * (mode.U + mode.K) * 4;
+        var demod = new Ms110dDemodulator();
+        demod.Process(new float[1500]);
+        demod.Process(audio.AsSpan(0, audio.Length - lastBlockSamples - 400).ToArray());
+        return demod;
+    }
+
+    [Theory]
+    [MemberData(nameof(Matrix))]
+    public void Every_Mode_And_Interleaver_Loops_Back(int wn, Ms110dInterleaverKind kind, bool awgn)
+    {
+        Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, kind);
+        // Two interleaver blocks, so the stream carries more than one block boundary.
         byte[] payload = RandomBits((2 * il.InputBits) - 32 - 8, 7000 + wn + (int)kind);
-        float[] audio = Transmit(wn, kind, standard, payload, awgn, seed: 31 + wn);
+        float[] audio = Transmit(wn, kind, payload, awgn, seed: 31 + wn);
 
         (Ms110dBurst? burst, _) = Receive(audio);
 
@@ -106,68 +128,52 @@ public class Ms110dProbePatternTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(5, Ms110dInterleaverKind.UltraShort)]
-    [InlineData(1, Ms110dInterleaverKind.Short)]
-    [InlineData(7, Ms110dInterleaverKind.Medium)]
-    public void Pattern_Is_Decided_From_The_Probes(int wn, Ms110dInterleaverKind kind)
+    [MemberData(nameof(Modes))]
+    public void Transmitter_Shifts_Only_The_Probe_At_The_Long_Boundary(int wn, Ms110dInterleaverKind kind)
     {
+        // Enough blocks to pass frame L - 2 at least once, whatever the interleaver.
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, kind);
-        foreach (bool standard in new[] { false, true })
+        Ms110dMode mode = Ms110dMode.Mode3k(wn);
+        int longFrames = Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.Long).Frames;
+        int blocks = Math.Max(2, (longFrames + il.Frames - 1) / il.Frames);
+        byte[] payload = RandomBits((blocks * il.InputBits) - 32, 7400 + wn + (int)kind);
+        var settings = new Ms110dTxSettings { WaveformNumber = wn, Interleaver = kind };
+        Complex32[] symbols = new Ms110dModulator(settings).BuildSymbols(payload);
+        int preamble = new PreambleGenerator(settings.TlcBlocks, settings.PreambleSuperframes)
+            .Generate(wn, kind, settings.ConstraintLength).Length;
+
+        Complex32[] unshifted = MiniProbe.Get(mode.K, boundary: false);
+        Complex32[] shifted = MiniProbe.Get(mode.K, boundary: true);
+        symbols.AsSpan(preamble, mode.K).ToArray().Should().Equal(unshifted, "the probe ending the preamble is never shifted");
+
+        int shiftedCount = 0;
+        for (long g = 0; g < (long)blocks * il.Frames; g++)
         {
-            byte[] payload = RandomBits((6 * il.InputBits) - 32 - 8, 7100 + wn);
-            float[] audio = Transmit(wn, kind, standard, payload, awgn: true, seed: 5);
-
-            // Stop before the last block completes: the end of a burst resets the receiver's
-            // burst state.
-            Ms110dMode mode = Ms110dMode.Mode3k(wn);
-            int lastBlockSamples = il.Frames * (mode.U + mode.K) * 4;
-            var demod = new Ms110dDemodulator();
-            demod.Process(new float[1500]);
-            demod.Process(audio.AsSpan(0, audio.Length - 4000 - lastBlockSamples - 400).ToArray());
-
-            // The first probe on which the two rules disagree.
-            long g = il.Frames - 2 >= 0 && kind != Ms110dInterleaverKind.UltraShort ? il.Frames - 2 : 0;
-            demod.ProbePatternForBlocks.Boundary(g).Should().Be(
-                !standard, "the receiver follows the pattern the probes were sent with");
-            output.WriteLine($"WN{wn} {kind} standard={standard}: {demod.ProbePatternForBlocks.Scored} probes scored, locked={demod.ProbePatternForBlocks.Locked}");
+            int start = preamble + mode.K + (int)(g * (mode.U + mode.K)) + mode.U;
+            bool expectShifted = g % longFrames == longFrames - 2;
+            symbols.AsSpan(start, mode.K).ToArray().Should().Equal(
+                expectShifted ? shifted : unshifted, $"the probe after frame {g}");
+            shiftedCount += expectShifted ? 1 : 0;
         }
+
+        shiftedCount.Should().BeGreaterThan(0);
     }
 
     [Theory]
-    [InlineData(6, Ms110dInterleaverKind.Short, 14)]
-    [InlineData(6, Ms110dInterleaverKind.Short, 11)]
-    [InlineData(13, Ms110dInterleaverKind.Short, 5)]
-    [InlineData(13, Ms110dInterleaverKind.Short, 8)]
-    [InlineData(3, Ms110dInterleaverKind.UltraShort, 7)]
-    public void Faded_Current_Pattern_Bursts_Never_Leave_The_Current_Pattern(
-        int wn, Ms110dInterleaverKind kind, double snrDb)
+    [MemberData(nameof(Modes))]
+    public void Receiver_Expects_The_Standard_Pattern_At_Every_Probe(int wn, Ms110dInterleaverKind kind)
     {
+        // The receiver's view of which probe is shifted is the same rule, configured from the
+        // waveform the burst announces; the Long interleaver's own frame count is the period.
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, kind);
-        Ms110dMode mode = Ms110dMode.Mode3k(wn);
-        for (int seed = 1; seed <= 8; seed++)
+        int longFrames = Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.Long).Frames;
+        byte[] payload = RandomBits((2 * il.InputBits) - 40, 8000 + wn + (int)kind);
+        Ms110dDemodulator demod = ReceiveAllButLastBlock(wn, kind, Transmit(wn, kind, payload, awgn: false, seed: 1));
+
+        demod.Lock.Should().NotBeNull();
+        for (long g = -1; g < 3L * longFrames; g++)
         {
-            var tx = new Ms110dModulator(new Ms110dTxSettings { WaveformNumber = wn, Interleaver = kind });
-            byte[] payload = RandomBits((20 * il.InputBits) - 32 - 8, 8000 + seed);
-            float[] audio = new WattersonChannel(9600, 900 + seed, WattersonChannel.Poor)
-                .Apply(tx.Modulate(payload), snrDb, leadInSamples: 1500, leadOutSamples: 4000);
-
-            // Stop before the last block completes (the end of a burst resets the pattern).
-            int lastBlockSamples = il.Frames * (mode.U + mode.K) * 4;
-            var demod = new Ms110dDemodulator();
-            demod.Process(new float[1500]);
-            demod.Process(audio.AsSpan(0, audio.Length - 4000 - lastBlockSamples - 400).ToArray());
-
-            demod.ProbePatternForBlocks.PeakEvidence.Should().BeLessThan(
-                ProbePattern.SwitchEvidence,
-                $"the running score of a faded current-pattern burst (seed {seed}) must never reach the switch threshold");
-            for (long g = 0; g < 20L * il.Frames; g++)
-            {
-                if (ProbePattern.CurrentRule(g, il.Frames))
-                {
-                    demod.ProbePatternForBlocks.Boundary(g).Should().BeTrue(
-                        $"a faded current-pattern burst (seed {seed}) must stay on the current pattern at frame {g}");
-                }
-            }
+            demod.ProbeShiftedAfter(g).Should().Be(g >= 0 && g % longFrames == longFrames - 2, $"the probe after frame {g}");
         }
     }
 
@@ -179,51 +185,28 @@ public class Ms110dProbePatternTests(ITestOutputHelper output)
     public void Preamble_End_Probe_Is_Unshifted_Before_The_First_UltraShort_Block(int wn)
     {
         // The turbo paths ask for the probe preceding frame 0 of block 0 (frame number -1).
-        // With one or two frames per block the old modulo expression called it shifted;
-        // it is the probe that ends the preamble and is never shifted, under either pattern.
+        // It is the probe that ends the preamble and is never shifted, even with one frame
+        // per block.
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.UltraShort);
-        Ms110dMode mode = Ms110dMode.Mode3k(wn);
-        foreach (bool standard in new[] { false, true })
-        {
-            byte[] payload = RandomBits((4 * il.InputBits) - 40, 8500 + wn);
-            float[] audio = Transmit(wn, Ms110dInterleaverKind.UltraShort, standard, payload, awgn: false, seed: 1);
-            int lastBlockSamples = il.Frames * (mode.U + mode.K) * 4;
-            var demod = new Ms110dDemodulator();
-            demod.Process(new float[1500]);
-            demod.Process(audio.AsSpan(0, audio.Length - 4000 - lastBlockSamples - 400).ToArray());
+        byte[] payload = RandomBits((4 * il.InputBits) - 40, 8500 + wn);
+        float[] audio = Transmit(wn, Ms110dInterleaverKind.UltraShort, payload, awgn: false, seed: 1);
+        Ms110dDemodulator demod = ReceiveAllButLastBlock(wn, Ms110dInterleaverKind.UltraShort, audio);
 
-            // The receiver is locked on the burst (burst state is configured). Block 0 of the burst: the probe before its first frame is the preamble-end probe.
-            demod.ProbePatternForBlocks.Boundary(-1).Should().BeFalse();
-            demod.ProbeShiftedAfter(-1).Should().BeFalse();
-        }
-    }
-
-    [Theory]
-    [InlineData(1)]
-    [InlineData(3)]
-    [InlineData(5)]
-    [InlineData(8)]
-    public void Long_Interleaver_Sends_Identical_Audio_Under_Both_Patterns(int wn)
-    {
-        var settings = new Ms110dTxSettings { WaveformNumber = wn, Interleaver = Ms110dInterleaverKind.Long };
-        byte[] payload = RandomBits(300, 77);
-        float[] current = new Ms110dModulator(settings).Modulate(payload);
-        float[] standard = new Ms110dModulator(settings) { StandardProbePattern = true }.Modulate(payload);
-        standard.Should().Equal(current);
+        demod.Lock.Should().NotBeNull();
+        demod.ProbeShiftedAfter(-1).Should().BeFalse();
     }
 
     [Theory]
     [InlineData(5, Ms110dInterleaverKind.UltraShort)]
     [InlineData(5, Ms110dInterleaverKind.Short)]
-    public void Standard_Pattern_Shifts_Only_At_The_Long_Boundary_And_Is_Decoded_There(
-        int wn, Ms110dInterleaverKind kind)
+    public void Shifted_Probe_At_The_Long_Boundary_Is_Decoded_There(int wn, Ms110dInterleaverKind kind)
     {
-        // Long enough to reach frame L - 2 = 62, the only frame after which the standard
-        // pattern shifts a probe at WN5: 64 UltraShort blocks, 16 Short ones.
+        // Long enough to reach frame L - 2 = 62, the only frame after which a probe is
+        // shifted at WN5: 64 UltraShort blocks, 16 Short ones.
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, kind);
         int blocks = 64 / il.Frames;
         byte[] payload = RandomBits((blocks * il.InputBits) - 32 - 8, 7200 + (int)kind);
-        float[] audio = Transmit(wn, kind, standard: true, payload, awgn: true, seed: 17);
+        float[] audio = Transmit(wn, kind, payload, awgn: true, seed: 17);
 
         (Ms110dBurst? burst, _) = Receive(audio);
 
@@ -238,46 +221,33 @@ public class Ms110dProbePatternTests(ITestOutputHelper output)
     [InlineData(6, true)]
     public void Last_Probe_Being_A_Boundary_Probe_With_The_Eot_Extension_Loops_Back(int wn, bool eot)
     {
-        // One frame per block, 63 blocks: under the standard rule the burst's last probe
-        // (after frame 62 = L - 2 at WN5-13) is a shifted one, so the 32-symbol EOT
-        // extension continues the shifted sequence. (The current rule shifts every probe.)
+        // One frame per block, 63 blocks: the burst's last probe (after frame 62 = L - 2 at
+        // WN5 to WN13) is a shifted one, so the 32-symbol EOT extension continues the
+        // shifted sequence.
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.UltraShort);
         byte[] payload = RandomBits((63 * il.InputBits) - 32, 7300 + wn);
-        foreach (bool standard in new[] { false, true })
-        {
-            float[] audio = Transmit(wn, Ms110dInterleaverKind.UltraShort, standard, payload, awgn: true, seed: 3, eot);
+        float[] audio = Transmit(wn, Ms110dInterleaverKind.UltraShort, payload, awgn: true, seed: 3, eot);
 
-            (Ms110dBurst? burst, _) = Receive(audio);
+        (Ms110dBurst? burst, _) = Receive(audio);
 
-            burst.Should().NotBeNull();
-            burst!.Reason.Should().Be(Ms110dBurstEndReason.Eom);
-            burst.PayloadBits.Should().Equal(payload);
-        }
+        burst.Should().NotBeNull();
+        burst!.Reason.Should().Be(Ms110dBurstEndReason.Eom);
+        burst.PayloadBits.Should().Equal(payload);
     }
 
     [Fact]
-    public void Rules_Agree_For_The_Long_Interleaver_And_Standard_Is_A_Subset_Otherwise()
+    public void Rule_Shifts_Once_Per_Long_Block_And_Never_The_Preamble_End_Probe()
     {
         foreach (int wn in Waveforms)
         {
-            int longFrames = Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.Long).Frames;
-            foreach (Ms110dInterleaverKind kind in Enum.GetValues<Ms110dInterleaverKind>())
+            int longFrames = ProbePattern.LongFrames(wn);
+            longFrames.Should().Be(Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.Long).Frames);
+            ProbePattern.ShiftedAfter(-1, longFrames).Should().BeFalse();
+            for (long g = 0; g < 3L * longFrames; g++)
             {
-                int frames = Ms110dInterleaverParams.Get3k(wn, kind).Frames;
-                for (long g = -1; g < 3L * longFrames; g++)
-                {
-                    bool current = ProbePattern.CurrentRule(g, frames);
-                    bool standard = ProbePattern.StandardRule(g, longFrames);
-                    if (kind == Ms110dInterleaverKind.Long)
-                    {
-                        current.Should().Be(standard);
-                    }
-
-                    if (standard)
-                    {
-                        current.Should().BeTrue();
-                    }
-                }
+                // For the Long interleaver this is the probe after the second-to-last frame
+                // of each block; every other interleaver uses the same frame numbers.
+                ProbePattern.ShiftedAfter(g, longFrames).Should().Be((g + 2) % longFrames == 0, $"WN{wn} frame {g}");
             }
         }
     }
