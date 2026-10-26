@@ -215,8 +215,9 @@ public class Ms110dMfbFormReceiver
             {
                 long ps = Fc0[p] - k32;
                 // Block 0's preceding probe is the preamble's closing probe, unshifted (see
-                // Ms110dMfbBlockDecoder.ProbeIsBoundary); B0 == 0 here by construction.
-                bool boundary = p != 0 && (p + 1) % frames == 0;
+                // Ms110dMfbBlockDecoder.ProbeIsBoundary); B0 == 0 here by construction. This
+                // receiver is Long only, so frames is the shift pattern's period.
+                bool boundary = ProbePattern.ShiftedAfter(p - 1, frames);
                 Complex32[] probe = MiniProbe.Get(k32, boundary);
                 Array.Clear(wRhs);
                 for (int i = 0; i < ScanLen; i++)
@@ -367,9 +368,7 @@ public class Ms110dMfbFormReceiver
             {
                 bool preceding = p < frames;
                 long ps = preceding ? frameChips[p] - k32 : frameChips[^1] + u256;
-                bool boundary = !(p == 0 && b == 0) && (preceding
-                    ? (p + 1) % frames == 0
-                    : (frames + 1) % frames == 0);
+                bool boundary = ProbePattern.ShiftedAfter(((long)b * frames) + (preceding ? p - 1 : frames - 1), frames);
                 Complex32[] probe = MiniProbe.Get(k32, boundary);
 
                 Array.Clear(rhs);
@@ -560,7 +559,7 @@ public class Ms110dMfbFormReceiver
                 {
                     bool preceding = p < frames;
                     long ps = preceding ? frameChips[p] - k32 : frameChips[^1] + u256;
-                    bool boundary = !(p == 0 && b == 0) && (preceding ? (p + 1) % frames == 0 : (frames + 1) % frames == 0);
+                    bool boundary = ProbePattern.ShiftedAfter(((long)b * frames) + (preceding ? p - 1 : frames - 1), frames);
                     Complex32[] probe = MiniProbe.Get(k32, boundary);
                     for (int c = 0; c < k32; c++)
                     {

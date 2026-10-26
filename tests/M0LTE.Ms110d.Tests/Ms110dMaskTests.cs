@@ -316,19 +316,13 @@ public class Ms110dMaskTests(ITestOutputHelper output)
             Environment.GetEnvironmentVariable("MS110D_MASK_SEED_OFFSET"), out int o) ? o : 0;
     }
 
-    // Probe-pattern A/B (not a mask run: the D-LXIV/D-LXV points are specified at the Long
-    // interleaver, where both patterns coincide). MS110D_MASK_INTERLEAVER=Short|Medium|UltraShort
-    // runs the point at that interleaver; MS110D_MASK_STD_PROBES=1 sends the D.5.2.2 standard
-    // probe pattern. Reports are labelled by the caller, never gate evidence.
+    // Not a mask run (the D-LXIV/D-LXV points are specified at the Long interleaver):
+    // MS110D_MASK_INTERLEAVER=Short|Medium|UltraShort runs the point at that interleaver.
+    // Reports are labelled by the caller, never gate evidence.
     private static Ms110dInterleaverKind MaskInterleaver()
     {
         string? name = Environment.GetEnvironmentVariable("MS110D_MASK_INTERLEAVER");
         return name is null ? Ms110dInterleaverKind.Long : Enum.Parse<Ms110dInterleaverKind>(name);
-    }
-
-    private static bool StandardProbes()
-    {
-        return Environment.GetEnvironmentVariable("MS110D_MASK_STD_PROBES") == "1";
     }
 
     private static bool GenieMode()
@@ -415,7 +409,7 @@ public class Ms110dMaskTests(ITestOutputHelper output)
             ConstraintLength = 7,
             PreambleSuperframes = 20,
         };
-        var tx = new Ms110dModulator(settings) { StandardProbePattern = StandardProbes() };
+        var tx = new Ms110dModulator(settings);
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, MaskInterleaver());
 
         // Uncoded-vs-coded telemetry (§5.3, phase-b-plan §B0): re-encode the known TX
