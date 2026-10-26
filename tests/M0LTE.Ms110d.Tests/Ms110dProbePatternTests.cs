@@ -199,12 +199,17 @@ public class Ms110dProbePatternTests
     [Theory]
     [InlineData(5, Ms110dInterleaverKind.UltraShort)]
     [InlineData(5, Ms110dInterleaverKind.Short)]
+    [InlineData(5, Ms110dInterleaverKind.Medium)]
+    [InlineData(1, Ms110dInterleaverKind.UltraShort)]
+    [InlineData(3, Ms110dInterleaverKind.Short)]
+    [InlineData(1, Ms110dInterleaverKind.Medium)]
     public void Shifted_Probe_At_The_Long_Boundary_Is_Decoded_There(int wn, Ms110dInterleaverKind kind)
     {
-        // Long enough to reach frame L - 2 = 62, the only frame after which a probe is
-        // shifted at WN5: 64 UltraShort blocks, 16 Short ones.
+        // Just long enough to reach frame L - 2, the first frame after which a probe is
+        // shifted (L the Long interleaver's frame count), so the burst carries one.
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, kind);
-        int blocks = 64 / il.Frames;
+        int longFrames = Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.Long).Frames;
+        int blocks = (longFrames - 1 + il.Frames - 1) / il.Frames;
         byte[] payload = RandomBits((blocks * il.InputBits) - 32 - 8, 7200 + (int)kind);
         float[] audio = Transmit(wn, kind, payload, awgn: true, seed: 17);
 

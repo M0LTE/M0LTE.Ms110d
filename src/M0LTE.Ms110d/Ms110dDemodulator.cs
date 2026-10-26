@@ -4085,7 +4085,7 @@ public sealed class Ms110dDemodulator
             // The probe preceding this frame's data supplies the known symbol history for
             // the head rows of the shortening solve and the known echo sources for the
             // first `delay` chain-BCJR symbols (§B2.2). Frame f's preceding probe is the
-            // one that FOLLOWED frame f−1 (for the first frame of the burst, the
+            // one that FOLLOWED frame f - 1 (for the first frame of the burst, the
             // preamble-ending probe, never shifted).
             Complex32[] precedingProbe = MiniProbe.Get(mode.K, boundary: ProbeShiftedAfter(((long)_blockIndex * _il.Frames) + f - 1));
 
