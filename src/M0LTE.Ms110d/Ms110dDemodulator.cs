@@ -140,11 +140,17 @@ public sealed class Ms110dDemodulator
     private long _altStart;
     private int _altBin;
 
-    // When the re-read at the strongest peak locks, tracking still starts from the earliest
-    // echo: the read only needed a cleaner look at the downcount and WID, while the
+    // When the re-read at the strongest peak locks and the earliest candidate was a separate
+    // arrival (at least EarliestEchoMinSamples before the strongest peak), tracking still
+    // starts from it: the read only needed a cleaner look at the downcount and WID, while the
     // equaliser needs its cursor on the first arrival (design section 2.6). Measured on a
     // two-path channel with a weaker earliest echo, starting the equaliser on the strongest
-    // peak lost more bursts than the retry saved.
+    // peak lost more bursts than the retry saved. A candidate closer than that is the same
+    // arrival's shoulder (the matched-filter response spans plus or minus one chip), whose read
+    // failed because its timing was wrong, so the lock keeps the strongest peak's timing:
+    // forcing the shoulder's timing cost a whole Poor-channel mask burst (carrier fitted
+    // 22 Hz off from chips read a chip early).
+    private const int EarliestEchoMinSamples = 4; // T/2 samples, two chips
     private bool _trackFromEarliest;
     private double _earliestChip0;
 
@@ -958,7 +964,7 @@ public sealed class Ms110dDemodulator
         {
             _altAvailable = false;
             FrameDiagnostics?.Invoke($"retry@{_altStart}: re-reading the preamble at the strongest peak");
-            _trackFromEarliest = true;
+            _trackFromEarliest = _altStart - _candChip0 >= EarliestEchoMinSamples;
             _earliestChip0 = _candChip0;
             BeginCandidate(_altStart, _altBin);
             return;
