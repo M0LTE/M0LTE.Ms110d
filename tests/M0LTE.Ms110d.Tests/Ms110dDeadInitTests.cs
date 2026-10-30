@@ -10,11 +10,11 @@ namespace M0LTE.Ms110d.Tests;
 /// receive level (the real-RF Poor capture, ~20 dB below the sim's nominal) leaves the K=48
 /// cold-restart LS solves over-regularised → the equalizer initialises dead → SignalLost. The
 /// fix normalizes the global receive level (estimated from a fade-averaged preamble SIGNAL
-/// correlation) up to nominal ahead of the equalizer; it is a dead-zone no-op at the sim's
-/// nominal level (masks unchanged) and lifts only globally-low bursts. Reproduced by the
-/// issue's own method - scale a clean-sim WN2 Poor burst down ~−20 dB (init gain 0.081 → 0.014,
-/// matching the OTA capture's ref≈0.014). Since issue #7 the K=48 waveforms (WN1/WN2) drop
-/// the dead-zone and always normalize, so for them the AGC is no longer a no-op at nominal;
+/// correlation) ahead of the equalizer. Reproduced by the issue's own method - scale a
+/// clean-sim WN2 Poor burst down ~−20 dB (init gain 0.081 → 0.014, matching the OTA capture's
+/// ref≈0.014). #101 first shipped as a boost for globally-low bursts only (a dead-zone above
+/// a level of 0.04); since issues #7 (WN1/WN2) and #17 (every other waveform with
+/// mini-probes) every burst is normalized to a fixed level in both directions, and
 /// <see cref="Ms110dReceiveLevelTests"/> pins the level independence that buys.
 /// </summary>
 public class Ms110dDeadInitTests
@@ -136,10 +136,10 @@ public class Ms110dDeadInitTests
             0, "scaling is level-only (SNR unchanged), so a normalized burst decodes cleanly");
     }
 
-    // The full-level control: the SAME burst at nominal level decodes cleanly. Since issue #7
-    // WN1/WN2 always normalize to a fixed level rather than sitting in the dead-zone, so the
-    // gain is whatever brings the measured level to that target (Poor reads below the AWGN
-    // level the target matches, so this burst is boosted a little).
+    // The full-level control: the SAME burst at nominal level decodes cleanly. WN1/WN2
+    // always normalize to a fixed level (issue #7), so the gain is whatever brings the
+    // measured level to that target (Poor reads below the AWGN level the target matches, so
+    // this burst is boosted a little).
     [Fact]
     public void Wn2_Poor_Full_Level_Normalizes_To_Target()
     {
@@ -152,16 +152,19 @@ public class Ms110dDeadInitTests
             0.25, 0.001, "WN2 normalizes its measured receive level to the K=48 target");
     }
 
-    // Everything except WN1/WN2 keeps the #101 dead-zone (issue #7 changed only K=48): a WN3
-    // burst at the masks' level must still get a gain of exactly 1.0.
-    [Fact]
-    public void Wn3_Poor_Full_Level_Is_Agc_No_Op()
+    // Issue #17: the other waveforms with mini-probes normalize too, to their own target
+    // (0.5), in both directions.
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(4.0)]
+    public void Wn3_Poor_Normalizes_To_Target(double scale)
     {
-        (float[] rx, byte[] payload) = BuildPoorBurst(FixtureSeed, FixtureSeed + 1, scale: 1.0, wn: 3);
+        (float[] rx, byte[] payload) = BuildPoorBurst(FixtureSeed, FixtureSeed + 1, scale, wn: 3);
         DecodeResult r = RunBurst(rx, payload);
 
         r.Reason.Should().Be(Ms110dBurstEndReason.Eom);
-        r.AgcGain.Should().Be(1.0, "at the nominal level the dead-zone leaves the gain at unity for WN3");
+        (r.AgcLevel * r.AgcGain).Should().BeApproximately(
+            0.5, 0.002, "WN3 normalizes its measured receive level to the shared target");
     }
 
     // Calibration (env-gated): sweep the receive-level scale and print reason / init gain /
@@ -180,46 +183,6 @@ public class Ms110dDeadInitTests
                 $"scale={scale:F3} ({20 * Math.Log10(scale):+0.0;-0.0} dB): reason={r.Reason} " +
                 $"decoded={r.Decoded}/{payload.Length} codedErrs={r.CodedErrors} " +
                 $"initRef={r.InitRefGain:F4} agcLevel={r.AgcLevel:F4} agcGain={r.AgcGain:F3}");
-        }
-    }
-
-    // Calibration (env-gated): the AGC level over the gated WN3 Poor mask seed families
-    // (canonical 503 + disjoint 10503, workers 0..3, bursts 0..14) - reports the MIN level, so
-    // the AgcLevelFloor dead-zone can be set strictly below it (guaranteeing the AGC never
-    // fires in-family, so the mask is byte-identical). Level depends on the channel
-    // realization, not the payload. WN3 rather than WN2: since issue #7 WN1/WN2 always
-    // normalize, so the dead-zone census only means something for the other waveforms.
-    [Fact]
-    public void Mask_Family_Agc_Level_Census()
-    {
-        Assert.SkipWhen(Environment.GetEnvironmentVariable("MS110D_DEADINIT_CAL") != "1",
-            "set MS110D_DEADINIT_CAL=1 for the AGC-level census");
-
-        foreach (int baseSeed in new[] { 503, 10_503 })
-        {
-            double min = double.PositiveInfinity, max = 0;
-            int fired = 0;
-            for (int worker = 0; worker < 4; worker++)
-            {
-                int workerSeed = baseSeed + (worker * 1_000_000);
-                for (int burst = 0; burst < 15; burst++)
-                {
-                    (float[] rx, byte[] payload) = BuildPoorBurst(workerSeed, workerSeed + (1000 * burst) + 1, 1.0, wn: 3);
-                    DecodeResult r = RunBurst(rx, payload);
-                    if (!double.IsNaN(r.AgcLevel))
-                    {
-                        min = Math.Min(min, r.AgcLevel);
-                        max = Math.Max(max, r.AgcLevel);
-                    }
-
-                    if (r.AgcGain != 1.0)
-                    {
-                        fired++;
-                    }
-                }
-            }
-
-            Console.Error.WriteLine($"family {baseSeed}: min agcLevel={min:F4} max={max:F4}, AGC fired on {fired}/60");
         }
     }
 }
