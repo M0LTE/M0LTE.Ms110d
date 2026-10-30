@@ -56,7 +56,7 @@ public sealed class Ms110dDemodulator
     // on Poor than leaving those bursts at unity.
     //
     // WN8 (16-QAM) keeps the original #101 behaviour: unity at or above AgcLevelFloor, a boost
-    // to AgcNominalLevel below it. It decoded the same at every level in the sweep, and on the
+    // to AgcNominalLevel below it (now under the higher cap). It decoded the same at every level in the sweep, and on the
     // Poor mask any normalization (targets 0.17 to 1.0 tried) cost errors in one seed family
     // or the other (12 and 6 errors before, 18 to 31 and 28 after).
     //
@@ -1567,8 +1567,7 @@ public sealed class Ms110dDemodulator
         var value = Interpolate(pos, _ring, _written);
         double theta = _thetaBase + (_omega * (pos - _chip0));
         // #101 input AGC (_agcGain): normalizes the receive level ahead of the equalizer.
-        // Unity during acquisition; after it, unity for every nominal-or-stronger burst
-        // except WN1/WN2, which always normalize (issue #7).
+        // Unity during acquisition; after it, the per-burst gain set in InitializeDfe.
         return value * Complex32.FromPhase(-((float)theta)) * _agcGain;
     }
 
@@ -1667,8 +1666,8 @@ public sealed class Ms110dDemodulator
     /// Fixed chips in 32-chip groups - noise averages out of each group, and |Σ y·k̄|/32 is
     /// that group's signal amplitude - then average over all groups. Averaging several
     /// super-frames (~1-2 s) averages the ~1 Hz Watterson fade out, so the result reflects the
-    /// GLOBAL level (a real-RF weak signal), not the instantaneous fade - the property that
-    /// lets the AGC no-op through a nominal fade yet catch a globally-low level. Reads at the
+    /// GLOBAL level (a real-RF weak signal), not the instantaneous fade, so the AGC follows
+    /// the receive level rather than chasing each fade. Reads at the
     /// current <see cref="_agcGain"/> (unity here, before the AGC is set), so it measures the
     /// true level. Matched to the signal, NOT total power - total RMS tracks SNR, so a
     /// total-power AGC would attenuate at low SNR and disturb the masks.</summary>
@@ -3452,13 +3451,14 @@ public sealed class Ms110dDemodulator
     }
 
     /// <summary>Measured additive-noise power per complex T/2 sample (genie mode only:
-    /// mean |noisy − clean|² between the rings; 0 when the genie is off, leaving every
-    /// solve bit-identical to the normal path).</summary>
+    /// mean |noisy − clean|² between the rings, scaled by the input AGC gain like the samples
+    /// the solves see; 0 when the genie is off, leaving every solve bit-identical to the
+    /// normal path).</summary>
     private float GenieNoisePower()
     {
         return _genieRing is null || _genieNoiseCount == 0
             ? 0f
-            : (float)(_genieNoiseSum / _genieNoiseCount);
+            : (float)(_genieNoiseSum / _genieNoiseCount) * _agcGain * _agcGain;
     }
 
     /// <summary>In-place Gaussian elimination with partial pivoting for the W1/W2

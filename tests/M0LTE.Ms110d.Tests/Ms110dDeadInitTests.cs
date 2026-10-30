@@ -167,6 +167,17 @@ public class Ms110dDeadInitTests
             0.5, 0.002, "WN3 normalizes its measured receive level to the shared target");
     }
 
+    // WN8 (16-QAM) keeps the #101 dead-zone (issue #17: normalizing it cost errors on the Poor
+    // mask), so at the masks' level its gain stays exactly 1.0.
+    [Fact]
+    public void Wn8_Poor_Full_Level_Is_Agc_No_Op()
+    {
+        (float[] rx, byte[] payload) = BuildPoorBurst(FixtureSeed, FixtureSeed + 1, scale: 1.0, wn: 8);
+        DecodeResult r = RunBurst(rx, payload);
+
+        r.AgcGain.Should().Be(1.0, "WN8 is not normalized at or above the #101 floor");
+    }
+
     // Calibration (env-gated): sweep the receive-level scale and print reason / init gain /
     // measured AGC level+gain so the dead-init flip point and the AGC response are visible.
     [Fact]

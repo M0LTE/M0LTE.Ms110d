@@ -29,8 +29,9 @@ public class Ms110dLevelSweep
     public void Sweep()
     {
         string? outPath = Environment.GetEnvironmentVariable("MS110D_SWEEP_OUT");
-        Assert.SkipWhen(outPath is null, "set MS110D_SWEEP_OUT");
-        int wn = int.Parse(Environment.GetEnvironmentVariable("MS110D_SWEEP_WN")!, CultureInfo.InvariantCulture);
+        string? wnText = Environment.GetEnvironmentVariable("MS110D_SWEEP_WN");
+        Assert.SkipWhen(outPath is null || wnText is null, "set MS110D_SWEEP_OUT and MS110D_SWEEP_WN");
+        int wn = int.Parse(wnText!, CultureInfo.InvariantCulture);
         string channel = Environment.GetEnvironmentVariable("MS110D_SWEEP_CHANNEL") ?? "poor";
         var kind = Enum.Parse<Ms110dInterleaverKind>(Environment.GetEnvironmentVariable("MS110D_SWEEP_IL") ?? "Short");
         int seeds = int.Parse(Environment.GetEnvironmentVariable("MS110D_SWEEP_SEEDS") ?? "100", CultureInfo.InvariantCulture);

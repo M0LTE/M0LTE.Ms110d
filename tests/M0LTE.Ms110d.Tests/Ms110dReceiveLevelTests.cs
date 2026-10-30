@@ -9,13 +9,14 @@ namespace M0LTE.Ms110d.Tests;
 /// (WN1/WN2) start their equaliser with ridges sized for the level the masks run at, so
 /// before the fix a burst arriving at a moderate level (preamble level about 0.05 to 0.15,
 /// above the old boost threshold of 0.04) started at about a tenth of the right gain and
-/// lost interleaver block 0. These tests replay one burst per waveform and channel at
-/// receive levels from about 0.02 to 1.0 and require the same clean decode at every level.
+/// lost interleaver block 0. These tests replay bursts at receive levels from about 0.01 to
+/// 1.0 and require the same clean decode at every level.
 /// <para>
-/// Issue #17: WN3 to WN7 and WN13 had the same weakness on Poor, milder for BPSK and worst for
-/// WN6 and WN13, and now normalize too (WN8 keeps the #101 behaviour, see LevelTarget). Their bursts run at each waveform's own Poor mask SNR
-/// and were picked from the issue's sweep (<see cref="Ms110dLevelSweep"/>) as ones that failed
-/// at one or more levels before the fix.
+/// Issue #17: WN3 to WN7 and WN13 had the same weakness on Poor, milder for BPSK and worst
+/// for WN6 and WN13, and now normalize too (WN8 keeps the #101 behaviour, see LevelTarget).
+/// Their bursts run at each waveform's own Poor mask SNR and were picked from the issue's
+/// sweep (<see cref="Ms110dLevelSweep"/>); each fails at one or more of these levels before
+/// the fix.
 /// </para>
 /// <para>
 /// The bursts use the Short interleaver, as on air: a Short block is short enough that a
@@ -30,15 +31,14 @@ public class Ms110dReceiveLevelTests
     // needs more than the old 32x gain cap (issue #17).
     private static readonly double[] Scales = [0.04, 0.08, 0.2, 0.4, 0.6, 1.0, 4.0];
 
-    // One burst per waveform and channel. Seeds are picked so the burst decodes cleanly at
-    // the masks' level; for WN1/WN2 each one also failed at one or more of these levels
-    // before the fix.
+    // Seeds are picked so the burst decodes cleanly at the masks' level; for WN1/WN2 and the
+    // issue #17 bursts each one also failed at one or more of these levels before the fix.
     private static readonly (int Wn, string Channel, int Seed)[] Bursts =
     [
         (1, "awgn", 7003), (1, "poor", 7014),
         (2, "awgn", 7000), (2, "poor", 7002),
         (3, "awgn", 7000), (3, "poor", 7000),
-        (3, "poor", 20001), (4, "poor", 20015), (5, "poor", 20005), (6, "poor", 20000),
+        (3, "poor", 20001), (4, "poor", 20015), (5, "poor", 20026), (6, "poor", 20000),
         (7, "poor", 20002), (13, "poor", 20002),
     ];
 
