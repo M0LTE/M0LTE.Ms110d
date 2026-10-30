@@ -691,7 +691,7 @@ public class Ms110dMaskTests(ITestOutputHelper output)
             }
 
             line += $", turbo {run.TurboConverged}c/{run.TurboReverted}r/{run.TurboAborted}a/{run.TurboSkipped}s";
-            line += $", agc {run.AgcResolves}"; // #101: 0 = AGC no-op in-family (masks byte-identical)
+            line += $", agc {run.AgcResolves}"; // #101: 0 = AGC no-op in-family; WN1/WN2 always normalize (#7)
         }
 
         if (run.Bits < 3_000_000)
