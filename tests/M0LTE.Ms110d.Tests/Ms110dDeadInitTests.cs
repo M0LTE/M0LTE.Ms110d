@@ -13,7 +13,9 @@ namespace M0LTE.Ms110d.Tests;
 /// correlation) up to nominal ahead of the equalizer; it is a dead-zone no-op at the sim's
 /// nominal level (masks unchanged) and lifts only globally-low bursts. Reproduced by the
 /// issue's own method - scale a clean-sim WN2 Poor burst down ~−20 dB (init gain 0.081 → 0.014,
-/// matching the OTA capture's ref≈0.014).
+/// matching the OTA capture's ref≈0.014). Since issue #7 the K=48 waveforms (WN1/WN2) drop
+/// the dead-zone and always normalize, so for them the AGC is no longer a no-op at nominal;
+/// <see cref="Ms110dReceiveLevelTests"/> pins the level independence that buys.
 /// </summary>
 public class Ms110dDeadInitTests
 {
@@ -134,17 +136,20 @@ public class Ms110dDeadInitTests
             0, "scaling is level-only (SNR unchanged), so a normalized burst decodes cleanly");
     }
 
-    // The full-level control: the SAME burst at nominal level must be a strict AGC no-op -
-    // gain exactly 1.0 - so the sim masks are unchanged by construction.
+    // The full-level control: the SAME burst at nominal level decodes cleanly. Since issue #7
+    // WN1/WN2 always normalize to a fixed level rather than sitting in the dead-zone, so the
+    // gain is whatever brings the measured level to that target (Poor reads below the AWGN
+    // level the target matches, so this burst is boosted a little).
     [Fact]
-    public void Wn2_Poor_Full_Level_Is_Agc_No_Op()
+    public void Wn2_Poor_Full_Level_Normalizes_To_Target()
     {
         (float[] rx, byte[] payload) = BuildWn2PoorBurst(FixtureSeed, FixtureSeed + 1, scale: 1.0);
         DecodeResult r = RunBurst(rx, payload);
 
         r.Reason.Should().Be(Ms110dBurstEndReason.Eom);
         r.CodedErrors.Should().Be(0);
-        r.AgcGain.Should().Be(1.0, "at the nominal level the AGC dead-zone leaves the gain at unity");
+        (r.AgcLevel * r.AgcGain).Should().BeApproximately(
+            0.25, 0.001, "WN2 normalizes its measured receive level to the K=48 target");
     }
 
     // Calibration (env-gated): sweep the receive-level scale and print reason / init gain /

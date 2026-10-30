@@ -47,6 +47,17 @@ public sealed class Ms110dDemodulator
     private const float AgcNominalLevel = 0.12f;  // boost target - the level the ridges were tuned for
     private const float AgcLevelFloor = 0.04f;    // dead-zone edge: at/above this the gain is exactly 1.0
     private const float AgcMaxGain = 32f;
+
+    // Issue #7: the K=48 waveforms (WN1/WN2) always normalize to this level, in both
+    // directions, instead of using the dead-zone above. Their equalizer ridges are order-1
+    // (InitializeDfe), so the solve's effective regularization goes with the square of the
+    // receive level: a burst at a preamble level of 0.05 to 0.15 started at about a tenth of
+    // the right gain and lost interleaver block 0. 0.25 is the level the masks' AWGN gates
+    // measure with EstimatePreambleLevel (the sim's channel output; Poor reads about 0.17
+    // there, because the estimate only sees the cursor path, so Poor bursts get about 1.5x,
+    // which measured slightly better on Poor than leaving them at unity). Other K keep the
+    // dead-zone: their 1e-3 ridges barely notice the level.
+    private const float K48LevelTarget = 0.25f;
     private static readonly double[] BinsHz = [-75, -50, -25, 0, 25, 50, 75];
 
     /// <summary>Encoded count words for every field value - the joint count vote's
@@ -132,7 +143,7 @@ public sealed class Ms110dDemodulator
     // #101 input signal-level AGC: a per-burst scalar applied to the DFE read path so a
     // globally-low receive level (real-RF, no AGC upstream) is normalized to the level the
     // K=48 cold-restart solves were tuned for. 1.0 = no-op (set for every nominal-or-stronger
-    // burst by the dead-zone, so the sim masks are unchanged by construction). Estimated from a
+    // burst by the dead-zone, except K=48, which always normalizes: issue #7). Estimated from a
     // fade-averaged preamble SIGNAL correlation, so a nominal fade never trips it. See
     // InitializeDfe / EstimatePreambleLevel.
     private float _agcGain = 1.0f;
@@ -527,10 +538,10 @@ public sealed class Ms110dDemodulator
     /// acquired but could not be read, counted when the receiver lets go of it.</summary>
     public int SignalAbsentReleases { get; private set; }
 
-    /// <summary>Bursts whose input AGC fired (issue #101 - the receive level fell below the
-    /// dead-zone floor and was normalized up). Zero on every nominal-or-stronger burst, so a
-    /// zero total across a mask point proves the AGC was a strict no-op there (masks
-    /// byte-identical); a nonzero count over real-RF Poor is the fix engaging.</summary>
+    /// <summary>Bursts whose input AGC gain was not unity. WN1/WN2 (K=48) always normalize
+    /// their receive level (issue #7), so nearly every such burst counts. Every other
+    /// waveform is only boosted below the dead-zone floor (issue #101), so for those a zero
+    /// total across a mask point proves the AGC was a strict no-op there.</summary>
     public int AgcResolves { get; private set; }
 
     /// <summary>8PSK blocks offered to the per-block ensemble (Poor-gate successor G1d):
@@ -1294,9 +1305,9 @@ public sealed class Ms110dDemodulator
         double pos = _chip0 + halfChips + _tau;
         var value = Interpolate(pos, _ring, _written);
         double theta = _thetaBase + (_omega * (pos - _chip0));
-        // #101 input AGC (_agcGain, unity except on a globally-low burst): normalizes the
-        // receive level ahead of the equalizer. Unity during acquisition and for every
-        // nominal-or-stronger burst, so acquisition and the sim masks are untouched.
+        // #101 input AGC (_agcGain): normalizes the receive level ahead of the equalizer.
+        // Unity during acquisition; after it, unity for every nominal-or-stronger burst
+        // except WN1/WN2, which always normalize (issue #7).
         return value * Complex32.FromPhase(-((float)theta)) * _agcGain;
     }
 
@@ -1434,10 +1445,23 @@ public sealed class Ms110dDemodulator
         // dead-zone keeps _agcGain = 1.0 for every nominal-or-stronger burst (a strict no-op -
         // acquisition already happened at unity and the sim masks are unchanged by
         // construction), and only a globally-low burst (real-RF) is scaled up to nominal.
+        // WN1/WN2 (K=48) skip the dead-zone and always normalize to K48LevelTarget (issue #7).
         double agcLevel = EstimatePreambleLevel();
-        _agcGain = agcLevel <= 0 || agcLevel >= AgcLevelFloor
-            ? 1.0f
-            : (float)Math.Min(AgcNominalLevel / agcLevel, AgcMaxGain);
+        if (agcLevel <= 0)
+        {
+            _agcGain = 1.0f;
+        }
+        else if (_mode!.K == 48)
+        {
+            _agcGain = (float)Math.Min(K48LevelTarget / agcLevel, AgcMaxGain); // issue #7
+        }
+        else
+        {
+            _agcGain = agcLevel >= AgcLevelFloor
+                ? 1.0f
+                : (float)Math.Min(AgcNominalLevel / agcLevel, AgcMaxGain);
+        }
+
         if (_agcGain != 1.0f)
         {
             AgcResolves++;
