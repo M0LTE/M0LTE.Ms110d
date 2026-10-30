@@ -33,34 +33,42 @@ public sealed class Ms110dDemodulator
     private const int ChipsSuperframe = 576;
     private const int InterpHalf = 4;             // 8-tap interpolator
 
-    // #101 input signal-level AGC (see the _agcGain field). AgcLevelFloor is the receive
-    // level below which a burst is judged globally weak and normalized up to AgcNominalLevel;
-    // at or above it the gain is exactly 1.0 (a dead-zone that makes the AGC a no-op at the
-    // sim's nominal level and every stronger level, so those decodes are byte-identical). Both
-    // are the measured fade-averaged Fixed-section correlation amplitude (|Σ y·k̄|/32, k
-    // unit-magnitude 8PSK); AgcMaxGain caps the boost so a near-noise burst is not amplified
-    // without bound. The level is linear in receive level. Measured on the current sim (issue
-    // #7): the masks' channel output reads about 0.245 on AWGN and about 0.170 on Poor (the
-    // estimate only sees the cursor path, and Poor splits its power over two). An older
-    // calibration put the nominal at about 0.119, which is where AgcNominalLevel comes from;
-    // it is a boost target for globally weak bursts, not the level the masks run at. The
-    // floor 0.04 sits well below every mask burst's level (Poor bursts range down to about
-    // 0.08), so the dead-zone never fires in-family. WN1/WN2 do not use the dead-zone at all:
-    // see K48LevelTarget.
-    private const float AgcNominalLevel = 0.12f;  // boost target for globally weak bursts (not WN1/WN2)
-    private const float AgcLevelFloor = 0.04f;    // dead-zone edge: at/above this the gain is exactly 1.0
-    private const float AgcMaxGain = 32f;
-
-    // Issue #7: the K=48 waveforms (WN1/WN2) always normalize to this level, in both
-    // directions, instead of using the dead-zone above. Their equalizer ridges are order-1
+    // #101 input signal-level AGC (see the _agcGain field). Every waveform with mini-probes
+    // except WN8 scales the received signal to a fixed level after acquisition, up or down,
+    // so the equalizer always starts at the level it was tuned at (issues #7 and #17). The
+    // level is the fade-averaged Fixed-section correlation amplitude (|Σ y·k̄|/32, k
+    // unit-magnitude 8PSK) from EstimatePreambleLevel; it is linear in receive level and only
+    // sees the cursor path, so the masks' channel output reads about 0.245 on AWGN and about 0.170 on
+    // Poor, which splits its power over two paths.
+    //
+    // LevelTarget (the PSK waveforms WN3 to WN7 and WN13): before issue #17 these only
+    // boosted bursts below a level of 0.04, to 0.12, and left everything above alone, so a
+    // Poor burst just above 0.04 got no help and decoding kept improving with level well past
+    // the masks' own. A receive-level sweep on Poor (100 seeds, 8 levels from about 0.007 to
+    // 0.7, Short and Long interleavers) found targets from 0.5 to 2.0 about equally good and
+    // clearly better than 0.25 for QPSK and 8PSK (WN6 Short: 69 of 100 clean at 0.25, 83 at
+    // 0.5 and 1.0). On the Poor masks, two seed families, 0.5 beat 1.0 (WN6: 44 errors
+    // against 70; 74 before the change).
+    //
+    // K48LevelTarget (WN1/WN2, issue #7): their equalizer ridges are order-1
     // (InitializeDfe), so the solve's effective regularization goes with the square of the
-    // receive level: a burst at a preamble level of 0.05 to 0.15 started at about a tenth of
-    // the right gain and lost interleaver block 0. 0.25 is about the level the masks' AWGN
-    // gates measure with EstimatePreambleLevel (about 0.245; Poor reads about 0.170 there,
-    // because the estimate only sees the cursor path, so Poor bursts get about 1.5x, which
-    // measured slightly better on Poor than leaving them at unity). Other K keep the
-    // dead-zone: their 1e-3 ridges barely notice the level.
+    // level; 0.25 is about the level the masks' AWGN gates read, and measured slightly better
+    // on Poor than leaving those bursts at unity.
+    //
+    // WN8 (16-QAM) keeps the original #101 behaviour: unity at or above AgcLevelFloor, a boost
+    // to AgcNominalLevel below it (now under the higher cap). It decoded the same at every level in the sweep, and on the
+    // Poor mask any normalization (targets 0.17 to 1.0 tried) cost errors in one seed family
+    // or the other (12 and 6 errors before, 18 to 31 and 28 after).
+    //
+    // AgcMaxGain caps the boost so a near-noise burst is not amplified without bound. 32x
+    // left the weakest sweep level (about 0.007, some 30 dB under the masks) short of the
+    // target and decoding worse than the rest; 256x reaches it.
+    private const float LevelTarget = 0.5f;
+    private const float AgcNominalLevel = 0.12f;
+    private const float AgcLevelFloor = 0.04f;
     private const float K48LevelTarget = 0.25f;
+    private const float AgcMaxGain = 256f;
+
     private static readonly double[] BinsHz = [-75, -50, -25, 0, 25, 50, 75];
 
     /// <summary>Encoded count words for every field value - the joint count vote's
@@ -183,12 +191,11 @@ public sealed class Ms110dDemodulator
     private Ms110dInterleaverParams? _il;
     private long _dataStartChip;
     private bool _trackingInitialized;
-    // #101 input signal-level AGC: a per-burst scalar applied to the DFE read path so a
-    // globally-low receive level (real-RF, no AGC upstream) is normalized to the level the
-    // K=48 cold-restart solves were tuned for. 1.0 = no-op (set for every nominal-or-stronger
-    // burst by the dead-zone, except K=48, which always normalizes: issue #7). Estimated from a
-    // fade-averaged preamble SIGNAL correlation, so a nominal fade never trips it. See
-    // InitializeDfe / EstimatePreambleLevel.
+    // #101 input signal-level AGC: a per-burst scalar applied to the DFE read path so every
+    // burst reaches the equalizer at the level it was tuned for, whatever the receive level
+    // (real-RF, no AGC upstream; issues #7 and #17). Estimated from a fade-averaged preamble
+    // SIGNAL correlation, so a nominal fade never trips it. See LevelTarget, InitializeDfe and
+    // EstimatePreambleLevel.
     private float _agcGain = 1.0f;
 
     // Tracking state (WN ≥ 1).
@@ -581,10 +588,9 @@ public sealed class Ms110dDemodulator
     /// acquired but could not be read, counted when the receiver lets go of it.</summary>
     public int SignalAbsentReleases { get; private set; }
 
-    /// <summary>Bursts whose input AGC gain was not unity. WN1/WN2 (K=48) always normalize
-    /// their receive level (issue #7), so nearly every such burst counts. Every other
-    /// waveform is only boosted below the dead-zone floor (issue #101), so for those a zero
-    /// total across a mask point proves the AGC was a strict no-op there.</summary>
+    /// <summary>Bursts whose input AGC gain was not unity. Every waveform with mini-probes
+    /// except WN8 normalizes its receive level (issues #7 and #17), so nearly every such burst
+    /// counts; WN8 is only boosted below the #101 floor, so its mask points read zero.</summary>
     public int AgcResolves { get; private set; }
 
     /// <summary>8PSK blocks offered to the per-block ensemble (Poor-gate successor G1d):
@@ -1561,8 +1567,7 @@ public sealed class Ms110dDemodulator
         var value = Interpolate(pos, _ring, _written);
         double theta = _thetaBase + (_omega * (pos - _chip0));
         // #101 input AGC (_agcGain): normalizes the receive level ahead of the equalizer.
-        // Unity during acquisition; after it, unity for every nominal-or-stronger burst
-        // except WN1/WN2, which always normalize (issue #7).
+        // Unity during acquisition; after it, the per-burst gain set in InitializeDfe.
         return value * Complex32.FromPhase(-((float)theta)) * _agcGain;
     }
 
@@ -1661,8 +1666,8 @@ public sealed class Ms110dDemodulator
     /// Fixed chips in 32-chip groups - noise averages out of each group, and |Σ y·k̄|/32 is
     /// that group's signal amplitude - then average over all groups. Averaging several
     /// super-frames (~1-2 s) averages the ~1 Hz Watterson fade out, so the result reflects the
-    /// GLOBAL level (a real-RF weak signal), not the instantaneous fade - the property that
-    /// lets the AGC no-op through a nominal fade yet catch a globally-low level. Reads at the
+    /// GLOBAL level (a real-RF weak signal), not the instantaneous fade, so the AGC follows
+    /// the receive level rather than chasing each fade. Reads at the
     /// current <see cref="_agcGain"/> (unity here, before the AGC is set), so it measures the
     /// true level. Matched to the signal, NOT total power - total RMS tracks SNR, so a
     /// total-power AGC would attenuate at low SNR and disturb the masks.</summary>
@@ -1696,25 +1701,22 @@ public sealed class Ms110dDemodulator
     {
         // #101 input signal-level AGC: estimate the global receive level and set the per-burst
         // normalization BEFORE the carrier refit and DFE training read the (now-normalized)
-        // signal. _agcGain is unity here, so EstimatePreambleLevel measures the true level; the
-        // dead-zone keeps _agcGain = 1.0 for every nominal-or-stronger burst (a strict no-op -
-        // acquisition already happened at unity and the sim masks are unchanged by
-        // construction), and only a globally-low burst (real-RF) is scaled up to nominal.
-        // WN1/WN2 (K=48) skip the dead-zone and always normalize to K48LevelTarget (issue #7).
+        // signal. _agcGain is unity here, so EstimatePreambleLevel measures the true level.
+        // Every waveform but WN8 normalizes in both directions (issues #7 and #17, see
+        // LevelTarget); WN8 is only boosted when globally low.
         double agcLevel = EstimatePreambleLevel();
         if (agcLevel <= 0)
         {
             _agcGain = 1.0f;
         }
-        else if (_mode!.K == 48)
+        else if (_mode!.Modulation == Ms110dModulation.Qam16)
         {
-            _agcGain = (float)Math.Min(K48LevelTarget / agcLevel, AgcMaxGain); // issue #7
+            _agcGain = agcLevel >= AgcLevelFloor ? 1.0f : (float)Math.Min(AgcNominalLevel / agcLevel, AgcMaxGain);
         }
         else
         {
-            _agcGain = agcLevel >= AgcLevelFloor
-                ? 1.0f
-                : (float)Math.Min(AgcNominalLevel / agcLevel, AgcMaxGain);
+            float target = _mode.K == 48 ? K48LevelTarget : LevelTarget;
+            _agcGain = (float)Math.Min(target / agcLevel, AgcMaxGain);
         }
 
         if (_agcGain != 1.0f)
@@ -3449,13 +3451,14 @@ public sealed class Ms110dDemodulator
     }
 
     /// <summary>Measured additive-noise power per complex T/2 sample (genie mode only:
-    /// mean |noisy − clean|² between the rings; 0 when the genie is off, leaving every
-    /// solve bit-identical to the normal path).</summary>
+    /// mean |noisy − clean|² between the rings, scaled by the input AGC gain like the samples
+    /// the solves see; 0 when the genie is off, leaving every solve bit-identical to the
+    /// normal path).</summary>
     private float GenieNoisePower()
     {
         return _genieRing is null || _genieNoiseCount == 0
             ? 0f
-            : (float)(_genieNoiseSum / _genieNoiseCount);
+            : (float)(_genieNoiseSum / _genieNoiseCount) * _agcGain * _agcGain;
     }
 
     /// <summary>In-place Gaussian elimination with partial pivoting for the W1/W2
