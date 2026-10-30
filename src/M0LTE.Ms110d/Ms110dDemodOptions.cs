@@ -34,6 +34,11 @@ public enum Ms110dBurstEndReason
     /// that lets go of a burst too weak to decode once it has ended (issue #553,
     /// docs/dev/ms110d/signal-absent.md). DFE modes only; WN 0 has no probes.</summary>
     SignalAbsent,
+
+    /// <summary>A new preamble was found and read while this burst was still locked, so the
+    /// receiver let go of this burst to receive the new one. A burst that lost its EOM no
+    /// longer deafens the receiver to the next transmission.</summary>
+    NewPreamble,
 }
 
 /// <summary>Autobaud result: what the WID + downcount announced.</summary>
