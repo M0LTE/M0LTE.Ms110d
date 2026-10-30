@@ -36,15 +36,18 @@ public sealed class Ms110dDemodulator
     // #101 input signal-level AGC (see the _agcGain field). AgcLevelFloor is the receive
     // level below which a burst is judged globally weak and normalized up to AgcNominalLevel;
     // at or above it the gain is exactly 1.0 (a dead-zone that makes the AGC a no-op at the
-    // sim's nominal level and every stronger level → masks byte-identical). Both are the
-    // measured fade-averaged Fixed-section correlation amplitude (|Σ y·k̄|/32, k unit-magnitude
-    // 8PSK); AgcMaxGain caps the boost so a near-noise burst is not amplified without bound.
-    // Measured (data/agc-scale-calibration.log): the sim nominal Fixed-section correlation
-    // amplitude is ~0.119, linear in receive level (−20 dB → 0.012). The dead-zone floor 0.04
-    // sits far below the fade-averaged mask levels (which cluster near nominal because the
-    // ~1 Hz fade averages out over the ~2 s window) and far above the −20 dB real-RF level, so
-    // the AGC fires zero times in-family (masks byte-identical) yet catches the real-RF offset.
-    private const float AgcNominalLevel = 0.12f;  // boost target - the level the ridges were tuned for
+    // sim's nominal level and every stronger level, so those decodes are byte-identical). Both
+    // are the measured fade-averaged Fixed-section correlation amplitude (|Σ y·k̄|/32, k
+    // unit-magnitude 8PSK); AgcMaxGain caps the boost so a near-noise burst is not amplified
+    // without bound. The level is linear in receive level. Measured on the current sim (issue
+    // #7): the masks' channel output reads about 0.245 on AWGN and about 0.170 on Poor (the
+    // estimate only sees the cursor path, and Poor splits its power over two). An older
+    // calibration put the nominal at about 0.119, which is where AgcNominalLevel comes from;
+    // it is a boost target for globally weak bursts, not the level the masks run at. The
+    // floor 0.04 sits well below every mask burst's level (Poor bursts range down to about
+    // 0.08), so the dead-zone never fires in-family. WN1/WN2 do not use the dead-zone at all:
+    // see K48LevelTarget.
+    private const float AgcNominalLevel = 0.12f;  // boost target for globally weak bursts (not WN1/WN2)
     private const float AgcLevelFloor = 0.04f;    // dead-zone edge: at/above this the gain is exactly 1.0
     private const float AgcMaxGain = 32f;
 
@@ -52,10 +55,10 @@ public sealed class Ms110dDemodulator
     // directions, instead of using the dead-zone above. Their equalizer ridges are order-1
     // (InitializeDfe), so the solve's effective regularization goes with the square of the
     // receive level: a burst at a preamble level of 0.05 to 0.15 started at about a tenth of
-    // the right gain and lost interleaver block 0. 0.25 is the level the masks' AWGN gates
-    // measure with EstimatePreambleLevel (the sim's channel output; Poor reads about 0.17
-    // there, because the estimate only sees the cursor path, so Poor bursts get about 1.5x,
-    // which measured slightly better on Poor than leaving them at unity). Other K keep the
+    // the right gain and lost interleaver block 0. 0.25 is about the level the masks' AWGN
+    // gates measure with EstimatePreambleLevel (about 0.245; Poor reads about 0.170 there,
+    // because the estimate only sees the cursor path, so Poor bursts get about 1.5x, which
+    // measured slightly better on Poor than leaving them at unity). Other K keep the
     // dead-zone: their 1e-3 ridges barely notice the level.
     private const float K48LevelTarget = 0.25f;
     private static readonly double[] BinsHz = [-75, -50, -25, 0, 25, 50, 75];

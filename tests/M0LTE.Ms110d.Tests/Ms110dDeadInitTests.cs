@@ -19,23 +19,23 @@ namespace M0LTE.Ms110d.Tests;
 /// </summary>
 public class Ms110dDeadInitTests
 {
-    // A deterministic WN2 Poor burst, built exactly as Ms110dMaskTests.RunPointWorker builds
+    // A deterministic Poor burst (WN2 unless told otherwise), built exactly as Ms110dMaskTests.RunPointWorker builds
     // theirs (Long interleaver, K=7, 20-super-frame preamble). Bespoke seed, outside the gated
     // mask families - a robustness fixture, not a mask point.
     private const int FixtureSeed = 424_242;
     private const double Wn2PoorSnrDb = 5.0;
 
-    private static (float[] Rx, byte[] Payload) BuildWn2PoorBurst(int payloadSeed, int channelSeed, double scale)
+    private static (float[] Rx, byte[] Payload) BuildPoorBurst(int payloadSeed, int channelSeed, double scale, int wn = 2)
     {
         var settings = new Ms110dTxSettings
         {
-            WaveformNumber = 2,
+            WaveformNumber = wn,
             Interleaver = Ms110dInterleaverKind.Long,
             ConstraintLength = 7,
             PreambleSuperframes = 20,
         };
         var tx = new Ms110dModulator(settings);
-        Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(2, Ms110dInterleaverKind.Long);
+        Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(wn, Ms110dInterleaverKind.Long);
         double blockSeconds = il.Frames * (tx.Mode.U + tx.Mode.K) / 2400.0;
         int blocksPerBurst = Math.Max(1, (int)(90 / blockSeconds));
         int payloadBitsPerBurst = (blocksPerBurst * il.InputBits) - 32;
@@ -123,7 +123,7 @@ public class Ms110dDeadInitTests
     public void Wn2_Poor_Dead_Init_Recovers_At_Low_Receive_Level()
     {
         // −20 dB - the issue's own controlled reproduction (real path level offset).
-        (float[] rx, byte[] payload) = BuildWn2PoorBurst(FixtureSeed, FixtureSeed + 1, scale: 0.1);
+        (float[] rx, byte[] payload) = BuildPoorBurst(FixtureSeed, FixtureSeed + 1, scale: 0.1);
         DecodeResult r = RunBurst(rx, payload);
 
         r.Reason.Should().Be(
@@ -143,13 +143,25 @@ public class Ms110dDeadInitTests
     [Fact]
     public void Wn2_Poor_Full_Level_Normalizes_To_Target()
     {
-        (float[] rx, byte[] payload) = BuildWn2PoorBurst(FixtureSeed, FixtureSeed + 1, scale: 1.0);
+        (float[] rx, byte[] payload) = BuildPoorBurst(FixtureSeed, FixtureSeed + 1, scale: 1.0);
         DecodeResult r = RunBurst(rx, payload);
 
         r.Reason.Should().Be(Ms110dBurstEndReason.Eom);
         r.CodedErrors.Should().Be(0);
         (r.AgcLevel * r.AgcGain).Should().BeApproximately(
             0.25, 0.001, "WN2 normalizes its measured receive level to the K=48 target");
+    }
+
+    // Everything except WN1/WN2 keeps the #101 dead-zone (issue #7 changed only K=48): a WN3
+    // burst at the masks' level must still get a gain of exactly 1.0.
+    [Fact]
+    public void Wn3_Poor_Full_Level_Is_Agc_No_Op()
+    {
+        (float[] rx, byte[] payload) = BuildPoorBurst(FixtureSeed, FixtureSeed + 1, scale: 1.0, wn: 3);
+        DecodeResult r = RunBurst(rx, payload);
+
+        r.Reason.Should().Be(Ms110dBurstEndReason.Eom);
+        r.AgcGain.Should().Be(1.0, "at the nominal level the dead-zone leaves the gain at unity for WN3");
     }
 
     // Calibration (env-gated): sweep the receive-level scale and print reason / init gain /
@@ -162,7 +174,7 @@ public class Ms110dDeadInitTests
 
         foreach (double scale in new[] { 1.0, 0.5, 0.25, 0.1, 0.05, 0.03, 0.02, 0.01 })
         {
-            (float[] rx, byte[] payload) = BuildWn2PoorBurst(FixtureSeed, FixtureSeed + 1, scale);
+            (float[] rx, byte[] payload) = BuildPoorBurst(FixtureSeed, FixtureSeed + 1, scale);
             DecodeResult r = RunBurst(rx, payload);
             Console.Error.WriteLine(
                 $"scale={scale:F3} ({20 * Math.Log10(scale):+0.0;-0.0} dB): reason={r.Reason} " +
@@ -171,27 +183,28 @@ public class Ms110dDeadInitTests
         }
     }
 
-    // Calibration (env-gated): the AGC level over the gated WN2 Poor mask seed families
-    // (canonical 502 + disjoint 10502, workers 0..3, bursts 0..61) - reports the MIN level, so
+    // Calibration (env-gated): the AGC level over the gated WN3 Poor mask seed families
+    // (canonical 503 + disjoint 10503, workers 0..3, bursts 0..14) - reports the MIN level, so
     // the AgcLevelFloor dead-zone can be set strictly below it (guaranteeing the AGC never
-    // fires in-family → mask byte-identical). Level depends on the channel realization, not the
-    // payload.
+    // fires in-family, so the mask is byte-identical). Level depends on the channel
+    // realization, not the payload. WN3 rather than WN2: since issue #7 WN1/WN2 always
+    // normalize, so the dead-zone census only means something for the other waveforms.
     [Fact]
     public void Mask_Family_Agc_Level_Census()
     {
         Assert.SkipWhen(Environment.GetEnvironmentVariable("MS110D_DEADINIT_CAL") != "1",
             "set MS110D_DEADINIT_CAL=1 for the AGC-level census");
 
-        foreach (int baseSeed in new[] { 502, 10_502 })
+        foreach (int baseSeed in new[] { 503, 10_503 })
         {
             double min = double.PositiveInfinity, max = 0;
             int fired = 0;
             for (int worker = 0; worker < 4; worker++)
             {
                 int workerSeed = baseSeed + (worker * 1_000_000);
-                for (int burst = 0; burst < 62; burst++)
+                for (int burst = 0; burst < 15; burst++)
                 {
-                    (float[] rx, byte[] payload) = BuildWn2PoorBurst(workerSeed, workerSeed + (1000 * burst) + 1, 1.0);
+                    (float[] rx, byte[] payload) = BuildPoorBurst(workerSeed, workerSeed + (1000 * burst) + 1, 1.0, wn: 3);
                     DecodeResult r = RunBurst(rx, payload);
                     if (!double.IsNaN(r.AgcLevel))
                     {
@@ -206,7 +219,7 @@ public class Ms110dDeadInitTests
                 }
             }
 
-            Console.Error.WriteLine($"family {baseSeed}: min agcLevel={min:F4} max={max:F4}, AGC fired on {fired}/248");
+            Console.Error.WriteLine($"family {baseSeed}: min agcLevel={min:F4} max={max:F4}, AGC fired on {fired}/60");
         }
     }
 }

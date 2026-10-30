@@ -119,4 +119,41 @@ public class Ms110dReceiveLevelTests
         reason.Should().Be(Ms110dBurstEndReason.Eom, $"WN{wn} {channel} at scale {scale} (preamble level {level:F3})");
         errors.Should().Be(0, $"WN{wn} {channel} at scale {scale} (preamble level {level:F3}) must decode cleanly");
     }
+
+    // Stronger than a clean decode: for WN1/WN2 the receiver normalizes the level before the
+    // equalizer, so the first-pass soft values should be the same at every input scale, up to
+    // float rounding. Compared with the masks' level (scale 1).
+    [Theory]
+    [InlineData(1, "poor", 7014)]
+    [InlineData(2, "poor", 7002)]
+    [InlineData(2, "awgn", 7000)]
+    public void First_Pass_Soft_Values_Do_Not_Depend_On_Receive_Level(int wn, string channel, int seed)
+    {
+        float[] reference = FirstPassLlrs(wn, channel, seed, 1.0);
+        reference.Should().NotBeEmpty();
+        foreach (double scale in new[] { 0.08, 0.2, 0.6, 4.0 })
+        {
+            float[] llrs = FirstPassLlrs(wn, channel, seed, scale);
+            llrs.Length.Should().Be(reference.Length, $"WN{wn} {channel} at scale {scale}");
+            double maxDiff = 0;
+            for (int i = 0; i < llrs.Length; i++)
+            {
+                maxDiff = Math.Max(maxDiff, Math.Abs(llrs[i] - reference[i]));
+            }
+
+            maxDiff.Should().BeLessThan(1e-4, $"WN{wn} {channel} soft values at scale {scale}");
+        }
+    }
+
+    private static float[] FirstPassLlrs(int wn, string channel, int seed, double scale)
+    {
+        (float[] rx, _) = BuildBurst(wn, channel, seed, scale);
+        var demod = new Ms110dDemodulator(new Ms110dDemodOptions());
+        var llrs = new List<float>();
+        demod.FirstPassBlockLlrs += (_, block) => llrs.AddRange(block);
+        demod.Process(rx);
+        demod.Process(new float[9600]);
+        demod.Terminate();
+        return [.. llrs];
+    }
 }
