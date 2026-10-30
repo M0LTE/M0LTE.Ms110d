@@ -127,6 +127,46 @@ public sealed class Ms110dDemodulator
     private readonly double[] _metricRing = new double[256];
     private readonly byte[] _metricBinRing = new byte[256];
 
+    // The preamble candidate under read (issues #8 and #10). Its timing and carrier are kept
+    // apart from the lock's, so a candidate found while a burst is locked can be read without
+    // disturbing that burst.
+    private double _candChip0;
+    private double _candOmega;
+    private double _candCfoHz;
+
+    // Issue #8: the walkback moves a candidate to the earliest echo. When that read is
+    // rejected and the strongest peak was elsewhere, it is read once more there.
+    private bool _altAvailable;
+    private long _altStart;
+    private int _altBin;
+
+    // When the re-read at the strongest peak locks and the earliest candidate was a separate
+    // arrival (at least EarliestEchoMinSamples before the strongest peak), tracking still
+    // starts from it: the read only needed a cleaner look at the downcount and WID, while the
+    // equaliser needs its cursor on the first arrival (design section 2.6). Measured on a
+    // two-path channel with a weaker earliest echo, starting the equaliser on the strongest
+    // peak lost more bursts than the retry saved. A candidate closer than that is the same
+    // arrival's shoulder (the matched-filter response spans plus or minus one chip), whose read
+    // failed because its timing was wrong, so the lock keeps the strongest peak's timing:
+    // forcing the shoulder's timing cost a whole Poor-channel mask burst (carrier fitted
+    // 22 Hz off from chips read a chip early).
+    private const int EarliestEchoMinSamples = 4; // T/2 samples, two chips
+    private bool _trackFromEarliest;
+    private double _earliestChip0;
+
+    // Issue #10: while a burst is locked the search keeps running from the end of that
+    // burst's own preamble (_shadowSearchFrom, a T/2 position), and a candidate it finds
+    // is read in the background (_candPending). Only a candidate that passes every
+    // preamble gate ends the locked burst.
+    private long _shadowSearchFrom;
+    private bool _candPending;
+
+    // What the last successful preamble read announced.
+    private int _readCount;
+    private int _readWn;
+    private Ms110dInterleaverKind _readIl;
+    private int _readK;
+
     /// <summary>Highest matched-filter metric seen since construction/reset - an
     /// acquisition diagnostic (normalized 0…1).</summary>
     public double PeakSearchMetric { get; private set; }
@@ -735,6 +775,11 @@ public sealed class Ms110dDemodulator
                 break;
             case Ms110dRxState.Tracking:
                 TryTrack();
+                if (_state == Ms110dRxState.Tracking)
+                {
+                    ShadowStep();
+                }
+
                 break;
         }
     }
@@ -750,6 +795,16 @@ public sealed class Ms110dDemodulator
         }
 
         long s = p - 574;
+        bool shadow = _state == Ms110dRxState.Tracking;
+        if (shadow && s < _shadowSearchFrom)
+        {
+            // Still inside the locked burst's own preamble: its remaining super-frames are
+            // the burst already being read, not a new transmission. Zeroed so the walkback
+            // cannot step back into them either.
+            _metricRing[s & 255] = 0;
+            return;
+        }
+
         double energy = _combEnergy[(int)(s & 1)];
         if (energy <= 1e-12)
         {
@@ -771,7 +826,7 @@ public sealed class Ms110dDemodulator
         _metricRing[s & 255] = best;
         _metricBinRing[s & 255] = (byte)bestBin;
 
-        if (best > PeakSearchMetric)
+        if (!shadow && best > PeakSearchMetric)
         {
             PeakSearchMetric = best;
         }
@@ -834,10 +889,25 @@ public sealed class Ms110dDemodulator
             }
         }
 
+        bool shadow = _state == Ms110dRxState.Tracking;
         FrameDiagnostics?.Invoke(
             $"accept@{s}: best={_bestStart} metric={_bestMetric:F3} " +
-            $"walkback={_bestStart - s} bin={bin}");
+            $"walkback={_bestStart - s} bin={bin}{(shadow ? " while-locked" : "")}");
 
+        // Issue #8: keep the strongest peak, in case the earliest echo reads badly.
+        _altAvailable = s != _bestStart;
+        _altStart = _bestStart;
+        _altBin = _bestBin;
+        _bestMetric = 0;
+        _bestStart = -1;
+        BeginCandidate(s, bin);
+    }
+
+    /// <summary>Times and tunes a preamble candidate whose Fixed section starts at T/2
+    /// position <paramref name="s"/> in CFO bin <paramref name="bin"/>, and starts reading
+    /// it: as the live acquisition while searching, in the background while locked.</summary>
+    private void BeginCandidate(long s, int bin)
+    {
         double energy = _combEnergy[(int)(s & 1)];
 
         // Sub-sample timing from a parabolic fit through the metric at s−1, s, s+1.
@@ -858,24 +928,140 @@ public sealed class Ms110dDemodulator
         }
 
         double fineHz = rotation.Arg() * Ms110dTables.SymbolRate / (2.0 * Math.PI * 32.0);
-        double cfoHz = BinsHz[bin] + fineHz;
+        _candCfoHz = BinsHz[bin] + fineHz;
+        _candChip0 = s + delta;
+        _candOmega = 2.0 * Math.PI * _candCfoHz / (2.0 * Ms110dTables.SymbolRate);
 
-        _chip0 = s + delta;
+        if (_state == Ms110dRxState.Tracking)
+        {
+            _candPending = true;
+            return;
+        }
+
+        StartLiveRead();
+    }
+
+    /// <summary>Makes the current candidate the live acquisition: the receiver's timing and
+    /// carrier move to it and the state to <see cref="Ms110dRxState.ReadingPreamble"/>.</summary>
+    private void StartLiveRead()
+    {
+        _candPending = false;
+        _chip0 = _candChip0;
         _tau = 0;
-        _omega = 2.0 * Math.PI * cfoHz / (2.0 * Ms110dTables.SymbolRate);
+        _omega = _candOmega;
         _thetaBase = 0;
-        _lock = new Ms110dLockInfo(-1, Ms110dInterleaverKind.Short, 7, cfoHz);
+        _lock = new Ms110dLockInfo(-1, Ms110dInterleaverKind.Short, 7, _candCfoHz);
         _state = Ms110dRxState.ReadingPreamble;
         _bestMetric = 0;
         _bestStart = -1;
     }
 
+    /// <summary>A preamble candidate was rejected. Issue #8: if the walkback had moved it
+    /// off the strongest peak, read it once more there; otherwise give up on it.</summary>
+    private void RejectCandidate()
+    {
+        if (_altAvailable)
+        {
+            _altAvailable = false;
+            FrameDiagnostics?.Invoke($"retry@{_altStart}: re-reading the preamble at the strongest peak");
+            _trackFromEarliest = _altStart - _candChip0 >= EarliestEchoMinSamples;
+            _earliestChip0 = _candChip0;
+            BeginCandidate(_altStart, _altBin);
+            return;
+        }
+
+        _trackFromEarliest = false;
+        if (_state == Ms110dRxState.Tracking)
+        {
+            // Back to the background search. The metric ring was not written while the
+            // candidate was read, so clear it: stale peaks must not steer the walkback.
+            _candPending = false;
+            Array.Clear(_metricRing);
+            return;
+        }
+
+        BackToSearch();
+    }
+
+    /// <summary>Issue #10: the background acquisition while a burst is locked. Searches for
+    /// a new preamble, reads a candidate once its samples are in, and lets go of the locked
+    /// burst only for a candidate that passes every gate the live acquisition applies.</summary>
+    private void ShadowStep()
+    {
+        if (!_candPending)
+        {
+            SearchStep();
+            return;
+        }
+
+        // Read with the candidate's timing and carrier, then put the lock's back.
+        double chip0 = _chip0, tau = _tau, omega = _omega, theta = _thetaBase;
+        float agc = _agcGain;
+        _chip0 = _candChip0;
+        _tau = 0;
+        _omega = _candOmega;
+        _thetaBase = 0;
+        _agcGain = 1.0f;
+        PreambleRead read;
+        try
+        {
+            read = ReadPreamble(probeOnly: true);
+        }
+        finally
+        {
+            _chip0 = chip0;
+            _tau = tau;
+            _omega = omega;
+            _thetaBase = theta;
+            _agcGain = agc;
+        }
+
+        switch (read)
+        {
+            case PreambleRead.Rejected:
+                RejectCandidate();
+                break;
+            case PreambleRead.Locked:
+                // A valid new preamble: end the locked burst. EmitBurst carries the pending
+                // candidate over into the live read, which locks it from the same samples.
+                FrameDiagnostics?.Invoke($"new-preamble@{_candChip0}: releasing the locked burst");
+                CompleteBurst(Ms110dBurstEndReason.NewPreamble);
+                break;
+        }
+    }
+
+    private enum PreambleRead
+    {
+        NotReady,
+        Rejected,
+        Locked,
+    }
+
     private void TryReadPreamble()
+    {
+        switch (ReadPreamble(probeOnly: false))
+        {
+            case PreambleRead.Rejected:
+                RejectCandidate();
+                break;
+            case PreambleRead.Locked:
+                EnterTracking();
+                break;
+        }
+    }
+
+    /// <summary>Reads the downcount and WID of the candidate at the receiver's current timing
+    /// and carrier and applies every acquisition gate. On <see cref="PreambleRead.Locked"/>
+    /// the announced count, waveform, interleaver and constraint length are in the _read
+    /// fields. <paramref name="probeOnly"/> reads without the diagnostics that would
+    /// announce a lock (the background read only decides whether to let go of a burst; the
+    /// live read that follows reports it).</summary>
+    private PreambleRead ReadPreamble(bool probeOnly)
     {
         // Need the whole matched super-frame plus interpolation margin.
         if (_written < (long)Math.Ceiling(_chip0 + (2 * ChipsSuperframe * 1.0)) + (2 * InterpHalf) + 2)
         {
-            return;
+            return PreambleRead.NotReady;
         }
 
         Span<byte> countDibits = stackalloc byte[4];
@@ -886,13 +1072,9 @@ public sealed class Ms110dDemodulator
 
         if (!PreambleGenerator.TryDecodeCount(countDibits, out int count))
         {
-            FrameDiagnostics?.Invoke($"reject@{_chip0}: gate=count cfo={_lock!.CfoHz:F1}");
-            BackToSearch();
-            return;
+            FrameDiagnostics?.Invoke($"reject@{_chip0}: gate=count cfo={_candCfoHz:F1}");
+            return PreambleRead.Rejected;
         }
-
-        FrameDiagnostics?.Invoke(
-            $"count@{_chip0}: dibits={countDibits[0]}{countDibits[1]}{countDibits[2]}{countDibits[3]} count={count}");
 
         // §B3 WID vote (issue #69): the WID section repeats identically in every
         // remaining preamble super-frame, all of which arrive BEFORE data start - so
@@ -905,7 +1087,13 @@ public sealed class Ms110dDemodulator
         if (_written < (long)Math.Ceiling(
                 _chip0 + (2.0 * ChipsSuperframe * votes)) + (2 * InterpHalf) + 2)
         {
-            return; // wait for the vote span - still entirely pre-data
+            return PreambleRead.NotReady; // wait for the vote span - still entirely pre-data
+        }
+
+        if (!probeOnly)
+        {
+            FrameDiagnostics?.Invoke(
+                $"count@{_chip0}: dibits={countDibits[0]}{countDibits[1]}{countDibits[2]}{countDibits[3]} count={count}");
         }
 
         Span<double> widMags = stackalloc double[5 * 4];
@@ -957,13 +1145,16 @@ public sealed class Ms110dDemodulator
         // super-frame still clears the floor easily (the healthy super-frames
         // dominate the sums).
         double voteMargin = marginSum / 5;
-        FrameDiagnostics?.Invoke($"wid@{_chip0}: votes={votes} margin={voteMargin:F3}");
+        if (!probeOnly)
+        {
+            FrameDiagnostics?.Invoke($"wid@{_chip0}: votes={votes} margin={voteMargin:F3}");
+        }
+
         if (voteMargin < 0.20)
         {
             FrameDiagnostics?.Invoke(
-                $"reject@{_chip0}: gate=margin margin={voteMargin:F3} cfo={_lock!.CfoHz:F1}");
-            BackToSearch();
-            return;
+                $"reject@{_chip0}: gate=margin margin={voteMargin:F3} cfo={_candCfoHz:F1}");
+            return PreambleRead.Rejected;
         }
 
         // §B3.5 Amendment 1: joint count vote over the same span the WID vote already
@@ -1012,12 +1203,17 @@ public sealed class Ms110dDemodulator
         }
 
         double countMargin = (bestScore - secondScore) / (bestScore + 1e-9);
-        FrameDiagnostics?.Invoke(
-            $"count-vote@{_chip0}: single={count} joint={jointCount} margin={countMargin:F3} frames={votes}");
+        if (!probeOnly)
+        {
+            FrameDiagnostics?.Invoke(
+                $"count-vote@{_chip0}: single={count} joint={jointCount} margin={countMargin:F3} frames={votes}");
+        }
+
         if (countMargin < 0.10)
         {
-            BackToSearch(); // mushy joint = failed acquisition candidate, not a lock
-            return;
+            FrameDiagnostics?.Invoke(
+                $"reject@{_chip0}: gate=count-vote margin={countMargin:F3} cfo={_candCfoHz:F1}");
+            return PreambleRead.Rejected; // mushy joint = failed acquisition candidate, not a lock
         }
 
         count = jointCount;
@@ -1032,9 +1228,54 @@ public sealed class Ms110dDemodulator
             // crash: Get3k throwing here killed the receiver mid-burst (found by
             // the Poor WN0 mask run at −1 dB, seed 500, ~2.8M bits in).
             FrameDiagnostics?.Invoke(
-                $"reject@{_chip0}: gate=wid wn={wn} il={il} k={k} cfo={_lock!.CfoHz:F1}");
-            BackToSearch();
+                $"reject@{_chip0}: gate=wid wn={wn} il={il} k={k} cfo={_candCfoHz:F1}");
+            return PreambleRead.Rejected;
+        }
+
+        _readCount = count;
+        _readWn = wn;
+        _readIl = il;
+        _readK = k;
+        return PreambleRead.Locked;
+    }
+
+    /// <summary>Locks the burst the last successful <see cref="ReadPreamble"/> announced and
+    /// starts tracking it. The receiver's timing and carrier are the candidate's.</summary>
+    private void EnterTracking()
+    {
+        int count = _readCount, wn = _readWn, k = _readK;
+        Ms110dInterleaverKind il = _readIl;
+
+        // Issue #9: every block buffer below is sized from this lock's waveform and
+        // interleaver. Build the geometry first, so a WID naming a combination the decoder
+        // cannot run is a rejected candidate, never an exception out of Process.
+        Ms110dMode mode;
+        Ms110dInterleaverParams ilParams;
+        ConvolutionalCode code = k == 9 ? ConvolutionalCode.K9 : ConvolutionalCode.K7;
+        PunctureSpec puncture;
+        try
+        {
+            mode = Ms110dMode.Mode3k(wn);
+            ilParams = Ms110dInterleaverParams.Get3k(wn, il);
+            puncture = Ms110dPuncture.Get(code, mode.CodeRate);
+        }
+        catch (ArgumentException)
+        {
+            FrameDiagnostics?.Invoke(
+                $"reject@{_chip0}: gate=geometry wn={wn} il={il} k={k} cfo={_candCfoHz:F1}");
+            RejectCandidate();
             return;
+        }
+
+        if (_trackFromEarliest)
+        {
+            // Issue #8: the strongest peak read the preamble; the equaliser starts on the
+            // earliest echo. Both lie inside one super-frame, so the count still holds, and
+            // the carrier fit below re-anchors the phase there.
+            _trackFromEarliest = false;
+            _chip0 = _earliestChip0;
+            _tau = 0;
+            _thetaBase = 0;
         }
 
         RefineCarrier(0, SuperframeChips(count, wn, il, k));
@@ -1044,12 +1285,12 @@ public sealed class Ms110dDemodulator
         // reaches Tracking yet decodes nothing can be told apart from a mis-voted WID that
         // merely passed its checksum. Fire-and-forget; observing the lock cannot change it.
         FrameDiagnostics?.Invoke($"lock@{_chip0}: wn={wn} il={il} k={k} cfo={_lock.CfoHz:F1}");
-        _mode = Ms110dMode.Mode3k(wn);
-        _il = Ms110dInterleaverParams.Get3k(wn, il);
-        ConvolutionalCode code = k == 9 ? ConvolutionalCode.K9 : ConvolutionalCode.K7;
+        _altAvailable = false;
+        _mode = mode;
+        _il = ilParams;
         _code = code;
         _viterbi = new TailBitingViterbiDecoder(code);
-        _puncture = Ms110dPuncture.Get(code, _mode.CodeRate);
+        _puncture = puncture;
         _interleaver = new Ms110dInterleaver(_il.SizeBits, _il.Increment);
         _blockLlrs = new float[_il.SizeBits];
         _siso = new TailBitingSisoDecoder(code);
@@ -1069,6 +1310,14 @@ public sealed class Ms110dDemodulator
         _dataStartChip = ChipsSuperframe * (long)(count + 1);
         _trackingInitialized = false;
         _state = Ms110dRxState.Tracking;
+
+        // Issue #10: from here the search runs on in the background, starting where this
+        // burst's data starts.
+        _shadowSearchFrom = (long)Math.Ceiling(_chip0 + (2.0 * _dataStartChip));
+        _candPending = false;
+        _bestMetric = 0;
+        _bestStart = -1;
+        Array.Clear(_metricRing);
     }
 
     /// <summary>How many trailing preamble super-frames the carrier re-fit may use: all
@@ -1294,6 +1543,9 @@ public sealed class Ms110dDemodulator
         _lock = null;
         _bestMetric = 0;
         _bestStart = -1;
+        _altAvailable = false;
+        _trackFromEarliest = false;
+        _candPending = false;
     }
 
     // ------------------------------------------------------------------ sample access
@@ -3008,7 +3260,11 @@ public sealed class Ms110dDemodulator
                 // below and every other waveform is bit-identical by construction.
                 _mfb ??= new Ms110dMfbBlockDecoder(
                     _mode, _il, _code!, _puncture!, _interleaver!, _viterbi!, _siso!);
-                _mfbInfo ??= new byte[info.Length];
+                if (_mfbInfo is null || _mfbInfo.Length != info.Length)
+                {
+                    _mfbInfo = new byte[info.Length];
+                }
+
                 Array.Copy(info, _mfbInfo, info.Length);
                 bool mfbConverged = _mfb.DecodeBlock(this, _blockFrameChips, _mfbInfo);
                 if (mfbConverged)
@@ -5021,7 +5277,20 @@ public sealed class Ms110dDemodulator
     {
         int blocks = _blockIndex;
         Ms110dLockInfo? lockInfo = _lock;
+        bool carry = _candPending && reason != Ms110dBurstEndReason.Terminated;
+        bool altAvailable = _altAvailable;
+        bool trackFromEarliest = _trackFromEarliest;
         EndBurst();
+        if (carry)
+        {
+            // Issue #10: a preamble candidate was being read in the background when this
+            // burst ended (or it is the reason it ended). Carry it into the live read rather
+            // than searching again from here and missing its first super-frames.
+            StartLiveRead();
+            _altAvailable = altAvailable;
+            _trackFromEarliest = trackFromEarliest;
+        }
+
         BurstCompleted?.Invoke(new Ms110dBurst(payload, reason, blocks, lockInfo));
     }
 
@@ -5039,6 +5308,7 @@ public sealed class Ms110dDemodulator
         // itself is mode-shaped, so a mode change rebuilds it.
         _mfb?.ResetBurst();
         _mfb = null;
+        _mfbInfo = null; // issue #9: sized for this burst's block, like the decoder itself
         _trackingInitialized = false;
         _blockLlrCount = 0;
         _blockIndex = 0;
@@ -5054,6 +5324,9 @@ public sealed class Ms110dDemodulator
         _fadingLatched = false;
         _bestMetric = 0;
         _bestStart = -1;
+        _altAvailable = false;
+        _trackFromEarliest = false;
+        _candPending = false;
         _terminate = false;
     }
 }

@@ -77,6 +77,7 @@ namespace M0LTE.Ms110d
         Terminated = 2,
         SignalLost = 3,
         SignalAbsent = 4,
+        NewPreamble = 5,
     }
     public sealed class Ms110dDemodOptions : System.IEquatable<M0LTE.Ms110d.Ms110dDemodOptions>
     {
