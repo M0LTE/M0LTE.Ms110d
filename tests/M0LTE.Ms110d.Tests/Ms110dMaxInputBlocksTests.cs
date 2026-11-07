@@ -138,4 +138,16 @@ public class Ms110dMaxInputBlocksTests
         bursts.Should().ContainSingle().Which.Reason.Should().Be(Ms110dBurstEndReason.MaxInputDataBlocks);
         bursts[0].Blocks.Should().Be(2);
     }
+
+    [Fact]
+    public void A_negative_option_still_means_unlimited_and_reads_back_as_zero()
+    {
+        var demod = new Ms110dDemodulator(new Ms110dDemodOptions { MaxInputDataBlocks = -1 });
+        demod.MaxInputDataBlocks.Should().Be(0);
+        var bursts = new List<Ms110dBurst>();
+        demod.BurstCompleted += bursts.Add;
+        Feed(demod, Burst(3, 7));
+        bursts.Should().ContainSingle().Which.Reason.Should().Be(Ms110dBurstEndReason.Eom);
+        bursts[0].Blocks.Should().Be(3);
+    }
 }

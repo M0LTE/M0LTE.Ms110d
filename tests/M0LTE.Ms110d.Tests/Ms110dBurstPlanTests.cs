@@ -167,4 +167,41 @@ public class Ms110dBurstPlanTests
         FluentActions.Invoking(() => Ms110dBurstPlan.Plan(settings with { ConstraintLength = 8 }, 0))
             .Should().Throw<ArgumentException>();
     }
+
+    [Theory]
+    [InlineData(0.35, 0, 3)]
+    [InlineData(0.2, 0, 3)]
+    [InlineData(0.05, 0, 1)]
+    [InlineData(0.35, 2, 3)]
+    [InlineData(0.1, 5, 20)]
+    public void Plan_matches_the_modulator_for_other_roll_offs_and_TLC_blocks(double rollOff, int tlcBlocks, int m)
+    {
+        foreach (int wn in new[] { 0, 1, 6, 13 })
+        {
+            var settings = new Ms110dTxSettings
+            {
+                WaveformNumber = wn,
+                Interleaver = Ms110dInterleaverKind.Short,
+                RollOff = rollOff,
+                TlcBlocks = tlcBlocks,
+                PreambleSuperframes = m,
+            };
+            int inputBits = Ms110dInterleaverParams.Get3k(wn, settings.Interleaver).InputBits;
+            foreach (int payload in new[] { 0, inputBits })
+            {
+                AssertAgrees(settings, payload);
+            }
+        }
+    }
+
+    [Fact]
+    public void A_burst_too_long_for_one_audio_array_is_rejected_not_wrapped()
+    {
+        var settings = new Ms110dTxSettings { WaveformNumber = 1, Interleaver = Ms110dInterleaverKind.UltraShort };
+        FluentActions.Invoking(() => Ms110dBurstPlan.Plan(settings, int.MaxValue))
+            .Should().Throw<ArgumentOutOfRangeException>();
+        FluentActions.Invoking(() => Ms110dBurstPlan.ForBlocks(settings, 10_000_000))
+            .Should().Throw<ArgumentOutOfRangeException>();
+        Ms110dBurstPlan.ForBlocks(settings, 1000).Samples.Should().BePositive();
+    }
 }

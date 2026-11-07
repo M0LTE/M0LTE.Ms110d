@@ -224,4 +224,44 @@ public class Ms110dTimingTests
         burst.LastFrameEndSample.Should().NotBeNull();
         burst.EndSample.Should().BeGreaterThan(burst.LastFrameEndSample!.Value);
     }
+
+    [Fact]
+    public void Sample_positions_after_Reset_count_from_the_first_Process_call_after_it()
+    {
+        // pdn-soundmodem calls Reset after each of its own transmissions; positions in the next
+        // burst must be counted from the samples fed after that Reset, not from construction.
+        var settings = new Ms110dTxSettings { WaveformNumber = 4, Interleaver = Ms110dInterleaverKind.Short };
+        Ms110dBurstPlan plan = Ms110dBurstPlan.ForBlocks(settings, 2);
+        byte[] payload = RandomBits(plan.PayloadCapacityBits, 31);
+        float[] tx = new Ms110dModulator(settings).Modulate(payload);
+        var audio = new float[LeadIn + tx.Length + 9600];
+        tx.CopyTo(audio, LeadIn);
+
+        var demod = new Ms110dDemodulator();
+        var starts = new List<Ms110dBurstStart>();
+        var bursts = new List<Ms110dBurst>();
+        demod.BurstStarted += starts.Add;
+        demod.BurstCompleted += bursts.Add;
+        void Feed()
+        {
+            for (int i = 0; i < audio.Length; i += 192)
+            {
+                demod.Process(audio.AsSpan(i, Math.Min(192, audio.Length - i)));
+            }
+        }
+
+        Feed();
+        demod.Process(new float[12345]); // a stretch of silence before the host resets
+        demod.Reset();
+        Feed();
+
+        starts.Should().HaveCount(2);
+        bursts.Should().HaveCount(2);
+        bursts.Should().OnlyContain(b => b.Reason == Ms110dBurstEndReason.Eom);
+        starts[1].DataStartSample.Should().Be(starts[0].DataStartSample);
+        starts[1].LockSample.Should().Be(starts[0].LockSample);
+        bursts[1].StartSample.Should().Be(bursts[0].StartSample);
+        bursts[1].EndSample.Should().Be(bursts[0].EndSample);
+        bursts[1].LastFrameEndSample.Should().Be(bursts[0].LastFrameEndSample);
+    }
 }

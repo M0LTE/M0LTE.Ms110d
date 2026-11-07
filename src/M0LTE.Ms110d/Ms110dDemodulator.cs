@@ -336,7 +336,7 @@ public sealed class Ms110dDemodulator
     public Ms110dDemodulator(Ms110dDemodOptions? options = null)
     {
         _options = options ?? new Ms110dDemodOptions();
-        _maxInputDataBlocks = _options.MaxInputDataBlocks;
+        _maxInputDataBlocks = Math.Max(0, _options.MaxInputDataBlocks); // a negative option always meant unlimited
         Ms110dModulator.ValidateRollOff(_options.RollOff, nameof(options));
         _rxPulse = Ms110dModulator.DesignPulse(_options.RollOff);
         _rxFilterRe = new FirFilter(_rxPulse);

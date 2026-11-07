@@ -54,8 +54,8 @@ public sealed record Ms110dBurstPlan(
     /// Unlike <see cref="Ms110dModulator.BurstSeconds"/>, the result includes the EOT extension
     /// when <see cref="Ms110dTxSettings.AppendEot"/> is on, and the sample count includes the
     /// pulse tail.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">The payload size is negative or the
-    /// waveform number is not supported.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The payload size is negative, the burst
+    /// would be too long for one audio array, or the waveform number is not supported.</exception>
     /// <exception cref="ArgumentException">The constraint length, roll-off or interleaver is
     /// not valid for the settings.</exception>
     public static Ms110dBurstPlan Plan(Ms110dTxSettings settings, int payloadBitCount)
@@ -75,8 +75,8 @@ public sealed record Ms110dBurstPlan(
 
     /// <summary>The plan for a burst of exactly <paramref name="blocks"/> interleaver blocks,
     /// carrying <see cref="PayloadCapacityBits"/> payload bits.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">The block count is less than 1 or the
-    /// waveform number is not supported.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The block count is less than 1, the burst
+    /// would be too long for one audio array, or the waveform number is not supported.</exception>
     public static Ms110dBurstPlan ForBlocks(Ms110dTxSettings settings, int blocks)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -107,11 +107,19 @@ public sealed record Ms110dBurstPlan(
         int m = settings.PreambleSuperframes;
         int preamble = (settings.TlcBlocks * 32) + (m * ((m == 1 ? 10 : 18) * 32));
         int blockSymbols = mode.Wn == 0 ? il.Frames * 32 : il.Frames * (mode.U + mode.K);
-        int data = mode.Wn == 0
-            ? blocks * blockSymbols
-            : mode.K + (blocks * blockSymbols) + (settings.AppendEot ? EotSymbols : 0);
-        int air = preamble + data;
+        long dataLong = mode.Wn == 0
+            ? (long)blocks * blockSymbols
+            : mode.K + ((long)blocks * blockSymbols) + (settings.AppendEot ? EotSymbols : 0);
         int pulseLength = (Ms110dModulator.PulseSpanSymbols(settings.RollOff) * 4) + 1;
+        long samples = ((preamble + dataLong) * 4) + pulseLength;
+        if (samples > int.MaxValue)
+        {
+            // Modulate returns one float[], so a burst this long could never be produced.
+            throw new ArgumentOutOfRangeException(nameof(settings), "burst too long for one audio array");
+        }
+
+        int data = (int)dataLong;
+        int air = preamble + data;
         return new Ms110dBurstPlan(
             settings.WaveformNumber,
             settings.Interleaver,
@@ -124,7 +132,7 @@ public sealed record Ms110dBurstPlan(
             data,
             air,
             air / (double)Ms110dTables.SymbolRate,
-            (air * 4) + pulseLength,
+            (int)samples,
             blockSymbols / (double)Ms110dTables.SymbolRate);
     }
 }
