@@ -225,6 +225,27 @@ public sealed class Ms110dDemodulator
     private int _collapsedProbes;
     private bool _collapseArmed;
 
+    // SNR estimator (docs/design-5066-support.md section 2). Linear sums of each probe's
+    // coherent signal power S_p and residual power N_p, read from the pre-solve probe pass.
+    // Pure observers: nothing in tracking or decoding reads them back.
+    private double _snrBlockS, _snrBlockN;
+    private int _snrBlockProbes, _snrBlockBad, _snrBlockRows;
+    private double _snrBurstS, _snrBurstN;
+    private int _snrBurstProbes, _snrBurstBad;
+    // The current run of consecutive bad probes, held back from the burst totals: folded in
+    // when a good probe follows (or the burst ends any other way), dropped on SignalLost,
+    // whose trailing run is noise after the signal stopped (section 2.2).
+    private double _snrTailS, _snrTailN;
+    private int _snrTailProbes;
+    // C_mod in dB for the locked waveform: average frame power over the unit-power probe.
+    private double _snrCmodDb;
+    // The locked waveform's measured equaliser loss (EqualiserLossDb), added back to the
+    // probe figure only.
+    private double _snrLossDb;
+
+    /// <summary>Probe rows behind the last raised block's SNR (validation only).</summary>
+    internal int LastBlockSnrRows { get; private set; }
+
     // Signal-absent release (issue #553, docs/dev/ms110d/signal-absent.md). Each frame's
     // mini-probe is matched-filtered against the raw received symbols over a lag window; the
     // coherent energy found there, less what noise puts there and with up to
@@ -1333,6 +1354,10 @@ public sealed class Ms110dDemodulator
 
         RefineCarrier(0, SuperframeChips(count, wn, il, k));
         _lock = new Ms110dLockInfo(wn, il, k, _lock!.CfoHz);
+        _snrCmodDb = ModulationCorrectionDb(mode);
+        _snrLossDb = EqualiserLossDb(wn);
+        double? preambleSnrDb = PreambleSnrDb(SuperframeChips(count, wn, il, k));
+        ResetSnrBurst();
 
         // Autopsy hook: the (waveform, interleaver, K) actually locked, so a burst that
         // reaches Tracking yet decodes nothing can be told apart from a mis-voted WID that
@@ -1375,7 +1400,10 @@ public sealed class Ms110dDemodulator
         Array.Clear(_metricRing);
 
         BurstStarted?.Invoke(new Ms110dBurstStart(
-            SamplesProcessed, _burstStartSample, firstSeenSample, _lock!));
+            SamplesProcessed, _burstStartSample, firstSeenSample, _lock!)
+        {
+            PreambleSnrDb = preambleSnrDb,
+        });
     }
 
     /// <summary>How many trailing preamble super-frames the carrier re-fit may use: all
@@ -1960,6 +1988,7 @@ public sealed class Ms110dDemodulator
         double mse = 0;
         double probeEnergy = 0;
         int statRows = 0;
+        Span<Complex32> probeOut = stackalloc Complex32[mode.K];
         for (int i = dfe.FbTaps; i < mode.K; i++)
         {
             // Estimation reads: the probe solve and its gain/MSE discriminators.
@@ -1970,6 +1999,7 @@ public sealed class Ms110dDemodulator
             }
 
             Complex32 y = dfe.Equalize(window, probePast);
+            probeOut[statRows] = y;
             probePhase += y * probe[i].Conj();
             mse += (y - probe[i]).MagnitudeSquared();
             probeEnergy += window[_ffLead].MagnitudeSquared();
@@ -1999,6 +2029,7 @@ public sealed class Ms110dDemodulator
         double preMse = mse / statRows;
         double probeEnergyMean = probeEnergy / statRows;
         double probeGain = probePhase.Abs() / mode.K;
+        ProbeSnrTerms(probeOut[..statRows], probe.AsSpan(dfe.FbTaps), out double snrS, out double snrN);
         bool collapsed = _collapseArmed &&
             probeGain < Math.Max(0.10, 0.45 * _probeGainRef) &&
             probeEnergyMean >= 0.25 * _probeEnergyRef;
@@ -2396,7 +2427,9 @@ public sealed class Ms110dDemodulator
             $"phi={(tapRotation.MagnitudeSquared() > 1e-12 ? tapRotation.Arg() : 0f):F3} " +
             $"presence={presence:F2}/{_presenceThreshold:F2}");
 
-        if (probeGain < Math.Max(0.10, 0.45 * _probeGainRef))
+        bool badProbe = probeGain < Math.Max(0.10, 0.45 * _probeGainRef);
+        AccumulateProbeSnr(snrS, snrN, statRows, badProbe);
+        if (badProbe)
         {
             // Signal-lost patience is WALL-CLOCK, not a probe count: a probe count
             // scales the patience with frame length - 25 probes was 3 s at U=256
@@ -3486,7 +3519,19 @@ public sealed class Ms110dDemodulator
         int searchFrom = Math.Max(0, _burstBits.Count - 31);
         _burstBits.AddRange(info);
         _lastBlockEndSample = SampleOfChip(_mode!.Wn == 0 ? _symbolChip : _frameChip);
-        BlockDecoded?.Invoke(new Ms110dRxBlock(_blockIndex, info) { EndSample = _lastBlockEndSample });
+        double? blockSnrDb = _snrBlockProbes == 0 || _genieRing is not null
+            ? null
+            : SnrDbFromSums(_snrBlockS, _snrBlockN, _snrLossDb);
+        int blockProbes = _snrBlockProbes, blockBad = _snrBlockBad;
+        LastBlockSnrRows = _snrBlockRows;
+        ResetSnrBlock();
+        BlockDecoded?.Invoke(new Ms110dRxBlock(_blockIndex, info)
+        {
+            EndSample = _lastBlockEndSample,
+            SnrDb = blockSnrDb,
+            ProbesUsed = blockProbes,
+            ProbesBad = blockBad,
+        });
         _blockIndex++;
 
         int eom = Ms110dFraming.FindEom(_burstBits, searchFrom);
@@ -5350,6 +5395,15 @@ public sealed class Ms110dDemodulator
         bool trackFromEarliest = _trackFromEarliest;
         long startSample = lockInfo is null ? 0 : _burstStartSample;
         long lastFrameEnd = _lastBlockEndSample;
+        if (reason != Ms110dBurstEndReason.SignalLost)
+        {
+            FoldSnrTail();
+        }
+
+        double? burstSnrDb = _snrBurstProbes == 0 || _genieRing is not null
+            ? null
+            : SnrDbFromSums(_snrBurstS, _snrBurstN, _snrLossDb);
+        int burstProbes = _snrBurstProbes, burstBad = _snrBurstBad;
         EndBurst();
         if (carry)
         {
@@ -5366,6 +5420,9 @@ public sealed class Ms110dDemodulator
             StartSample = startSample,
             EndSample = SamplesProcessed,
             LastFrameEndSample = lastFrameEnd >= 0 ? lastFrameEnd : null,
+            SnrDb = burstSnrDb,
+            ProbesUsed = burstProbes,
+            ProbesBad = burstBad,
         });
     }
 
@@ -5388,6 +5445,7 @@ public sealed class Ms110dDemodulator
         _blockLlrCount = 0;
         _blockIndex = 0;
         _lastBlockEndSample = -1;
+        ResetSnrBurst();
         _burstBits.Clear();
         // A burst ending mid-block (SignalLost/Terminate/EOM) must not leak this
         // block's frame positions or fading state into the next burst's turbo gate
@@ -5404,5 +5462,177 @@ public sealed class Ms110dDemodulator
         _trackFromEarliest = false;
         _candPending = false;
         _terminate = false;
+    }
+
+    // ------------------------------------------------------------------ SNR estimator
+
+    // 10 log10(2400 / 3000): Es/N0 at 2400 Bd to SNR in 3 kHz (design section 2.1).
+    private static readonly double SnrBandwidthDb = 10.0 * Math.Log10(2400.0 / 3000.0);
+
+    /// <summary>C_mod (design section 2.1): the probe is unit power, the convention's signal
+    /// power is the long-term frame average, 10 log10((U P_data + K) / (U + K)). 0 dB for every
+    /// PSK waveform; about -0.93 dB for WN 8.</summary>
+    internal static double ModulationCorrectionDb(Ms110dMode mode)
+    {
+        if (mode.Modulation != Ms110dModulation.Qam16 || mode.U + mode.K == 0)
+        {
+            return 0;
+        }
+
+        double p = 0;
+        foreach (Complex32 point in Ms110dTables.Qam16)
+        {
+            p += point.MagnitudeSquared();
+        }
+
+        p /= Ms110dTables.Qam16.Length;
+        return 10.0 * Math.Log10(((mode.U * p) + mode.K) / (mode.U + mode.K));
+    }
+
+    /// <summary>The equaliser's loss against an ideal matched filter on AWGN, per waveform, in
+    /// dB: how far the probe residual reads below the set SNR. Measured, not derived
+    /// (docs/snr-calibration.md): on WN 3 to 8 and 13 it is constant from the mask SNR to
+    /// 30 dB and the same at the Short and Long interleavers, so it is noise-proportional
+    /// excess at the equaliser output rather than a floor, and adding it back makes the AWGN
+    /// figure the set SNR. WN 1 and 2 (K = 48) read within half a dB of the set SNR at low SNR
+    /// without it and get none. The value is the mean AWGN bias over the mask + 5, mask + 10,
+    /// mask + 20 and 30 dB points of both interleavers at the commit the calibration names; if
+    /// the receiver's equaliser changes, the calibration is re-run and these move with it.</summary>
+    internal static double EqualiserLossDb(int wn)
+    {
+        return wn switch
+        {
+            3 => 1.86,
+            4 => 1.85,
+            5 => 1.27,
+            6 => 1.28,
+            7 => 1.35,
+            8 => 1.52,
+            13 => 1.25,
+            _ => 0,
+        };
+    }
+
+    /// <summary>One probe's terms (design section 2.2): g = sum(y conj(p)) / n, S_p = |g|^2,
+    /// N_p = sum(|y - g p|^2) / (n - 1). The probe symbols are unit-magnitude PSK.</summary>
+    private static void ProbeSnrTerms(
+        ReadOnlySpan<Complex32> y, ReadOnlySpan<Complex32> p, out double s, out double n)
+    {
+        int rows = y.Length;
+        double gRe = 0, gIm = 0;
+        for (int i = 0; i < rows; i++)
+        {
+            // y * conj(p)
+            gRe += (y[i].Re * p[i].Re) + (y[i].Im * p[i].Im);
+            gIm += (y[i].Im * p[i].Re) - (y[i].Re * p[i].Im);
+        }
+
+        gRe /= rows;
+        gIm /= rows;
+        double residual = 0;
+        for (int i = 0; i < rows; i++)
+        {
+            double eRe = y[i].Re - ((gRe * p[i].Re) - (gIm * p[i].Im));
+            double eIm = y[i].Im - ((gRe * p[i].Im) + (gIm * p[i].Re));
+            residual += (eRe * eRe) + (eIm * eIm);
+        }
+
+        s = (gRe * gRe) + (gIm * gIm);
+        n = rows > 1 ? residual / (rows - 1) : 0;
+    }
+
+    private void AccumulateProbeSnr(double s, double n, int rows, bool bad)
+    {
+        _snrBlockS += s;
+        _snrBlockN += n;
+        _snrBlockProbes++;
+        _snrBlockRows += rows;
+        if (bad)
+        {
+            _snrBlockBad++;
+            _snrTailS += s;
+            _snrTailN += n;
+            _snrTailProbes++;
+            return;
+        }
+
+        FoldSnrTail();
+        _snrBurstS += s;
+        _snrBurstN += n;
+        _snrBurstProbes++;
+    }
+
+    private void FoldSnrTail()
+    {
+        _snrBurstS += _snrTailS;
+        _snrBurstN += _snrTailN;
+        _snrBurstProbes += _snrTailProbes;
+        _snrBurstBad += _snrTailProbes;
+        _snrTailS = _snrTailN = 0;
+        _snrTailProbes = 0;
+    }
+
+    private void ResetSnrBlock()
+    {
+        _snrBlockS = _snrBlockN = 0;
+        _snrBlockProbes = _snrBlockBad = _snrBlockRows = 0;
+    }
+
+    private void ResetSnrBurst()
+    {
+        ResetSnrBlock();
+        _snrBurstS = _snrBurstN = 0;
+        _snrBurstProbes = _snrBurstBad = 0;
+        _snrTailS = _snrTailN = 0;
+        _snrTailProbes = 0;
+    }
+
+    /// <summary>Signal and noise sums (per symbol, linear) to SNR in 3 kHz, dB, with
+    /// <paramref name="lossDb"/> added back, clamped to [-10, +40].</summary>
+    private double SnrDbFromSums(double s, double n, double lossDb)
+    {
+        if (!(s > 0))
+        {
+            return -10;
+        }
+
+        if (!(n > 0))
+        {
+            return 40;
+        }
+
+        double db = (10.0 * Math.Log10(s / n)) + SnrBandwidthDb + _snrCmodDb + lossDb;
+        return Math.Clamp(db, -10.0, 40.0);
+    }
+
+    /// <summary>Preamble SNR at lock (design section 2.4): over the matched super-frame's known
+    /// chips in 32-chip groups, each group's coherent power |sum(y conj(k))|^2 / 32^2 against
+    /// its per-chip residual about that one-tap fit, as a ratio of sums. Null in genie mode.</summary>
+    private double? PreambleSnrDb(byte[] knownChips)
+    {
+        if (_genieRing is not null)
+        {
+            return null;
+        }
+
+        int groups = knownChips.Length / 32;
+        Span<Complex32> y = stackalloc Complex32[32];
+        Span<Complex32> k = stackalloc Complex32[32];
+        double sumS = 0, sumN = 0;
+        for (int j = 0; j < groups; j++)
+        {
+            for (int i = 0; i < 32; i++)
+            {
+                int chip = (32 * j) + i;
+                y[i] = ReadChip(chip);
+                k[i] = Ms110dTables.Psk8[knownChips[chip]];
+            }
+
+            ProbeSnrTerms(y, k, out double s, out double n);
+            sumS += s;
+            sumN += n;
+        }
+
+        return SnrDbFromSums(sumS, sumN, lossDb: 0);
     }
 }

@@ -1,6 +1,6 @@
 # Design: what a STANAG 5066 data link needs from M0LTE.Ms110d
 
-Status: design, not yet implemented. Written for [M0LTE/M0LTE.S5066#8](https://github.com/M0LTE/M0LTE.S5066/issues/8) (phase 2 of that plan). Nothing here changes the waveform; every addition is to what the library reports and what a caller can set. All additions are additive to the public API, and the C++ port ([ms110d-cpp](https://github.com/M0LTE/ms110d-cpp)) gets the same additions so the two stay level.
+Status: C# items 1 to 3 shipped in 0.5.0; items 4 to 6 (the SNR estimator) in 0.6.0, with one addition to section 2: a measured per-waveform equaliser loss added back to the probe figure (`docs/snr-calibration.md`). The C++ halves follow the C# releases. Written for [M0LTE/M0LTE.S5066#8](https://github.com/M0LTE/M0LTE.S5066/issues/8) (phase 2 of that plan). Nothing here changes the waveform; every addition is to what the library reports and what a caller can set. All additions are additive to the public API, and the C++ port ([ms110d-cpp](https://github.com/M0LTE/ms110d-cpp)) gets the same additions so the two stay level.
 
 Read with: `docs/versioning.md` (this repo), `docs/plan.md` sections 5 to 7 in M0LTE.S5066, and `notes/modem-and-tests.md` sections A and D in the s5066-research notes. Line numbers below are for `main` at 87b5e91 (v0.4.1) and ms110d-cpp at 6e22ca2.
 

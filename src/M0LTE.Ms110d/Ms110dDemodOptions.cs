@@ -58,6 +58,25 @@ public sealed record Ms110dRxBlock(int Index, byte[] Bits)
     /// at which the block's last mini-probe ended. For WN 0, which has no probes, the end of its
     /// last symbol.</summary>
     public long EndSample { get; init; }
+
+    /// <summary>Signal-to-noise ratio in dB over this block's mini-probes, with signal and noise
+    /// both in a 3 kHz bandwidth and the signal power the long-term average over data, probe and
+    /// preamble symbols (110D C.6.1 convention). Measured from each probe's residual at the
+    /// equaliser output before the probe's own solve, so on a fading channel it is an effective
+    /// post-equaliser SNR, weighted towards the fades, which saturates well below the channel's
+    /// average SNR (docs/snr-calibration.md). On AWGN it reads the channel SNR, calibrated at the
+    /// default equaliser settings (not with <see cref="Ms110dDemodOptions.RlsForgettingFactor"/>
+    /// or <see cref="Ms110dDemodOptions.TrackRidge"/> set). Clamped to [-10, +40] dB; a value at the
+    /// clamp means beyond what the estimator resolves. Null for WN 0 (no probes) and in genie
+    /// mode.</summary>
+    public double? SnrDb { get; init; }
+
+    /// <summary>Mini-probes behind <see cref="SnrDb"/>, including the bad ones.</summary>
+    public int ProbesUsed { get; init; }
+
+    /// <summary>How many of <see cref="ProbesUsed"/> the receiver flagged as bad for tracking
+    /// (probe correlation below its signal-lost line, typically a deep fade).</summary>
+    public int ProbesBad { get; init; }
 }
 
 /// <summary>A completed burst.</summary>
@@ -85,6 +104,19 @@ public sealed record Ms110dBurst(
     /// it is the end of the last decoded block, which is before the signal actually stopped, so
     /// treat it as a lower bound.</summary>
     public long? LastFrameEndSample { get; init; }
+
+    /// <summary>Signal-to-noise ratio in dB over every mini-probe of the burst, on the same
+    /// definition as <see cref="Ms110dRxBlock.SnrDb"/>. For a
+    /// <see cref="Ms110dBurstEndReason.SignalLost"/> exit the trailing run of bad probes that
+    /// triggered it (noise after the signal stopped) is left out. Null when there was no probe
+    /// to measure (WN 0, a burst that ended before its first probe) and in genie mode.</summary>
+    public double? SnrDb { get; init; }
+
+    /// <summary>Mini-probes behind <see cref="SnrDb"/>, including the bad ones.</summary>
+    public int ProbesUsed { get; init; }
+
+    /// <summary>How many of <see cref="ProbesUsed"/> the receiver flagged as bad for tracking.</summary>
+    public int ProbesBad { get; init; }
 }
 
 /// <summary>Raised when a burst has been locked: the preamble's WID has been read and accepted.
@@ -100,7 +132,18 @@ public sealed record Ms110dBurst(
 /// how long the signal has been on the air, not the keying instant.</param>
 /// <param name="Lock">What the preamble announced.</param>
 public sealed record Ms110dBurstStart(
-    long LockSample, long DataStartSample, long FirstSeenSample, Ms110dLockInfo Lock);
+    long LockSample, long DataStartSample, long FirstSeenSample, Ms110dLockInfo Lock)
+{
+    /// <summary>Signal-to-noise ratio in dB from the matched preamble super-frame, on the same
+    /// definition as <see cref="Ms110dRxBlock.SnrDb"/>, available at lock for every waveform
+    /// including WN 0. Measured before any equalisation with one complex gain per 32 chips, so
+    /// it is a good figure on a flat channel and reads low on any channel with delay spread
+    /// (every echo counts as noise; on the Poor channel it stays within a few dB of 0 dB
+    /// whatever the SNR, docs/snr-calibration.md). An early, coarse
+    /// number, not an input to a rate choice on its own. Clamped to [-10, +40] dB; null in genie
+    /// mode.</summary>
+    public double? PreambleSnrDb { get; init; }
+}
 
 /// <summary>
 /// Receiver options - the RX half of the D.5.4.6 remote-control parameter list. Any
