@@ -6,6 +6,14 @@ namespace M0LTE.Ms110d;
 /// many bytes fit in a block, and to know exactly how long the audio from
 /// <see cref="Ms110dModulator.Modulate"/> will be.
 /// </summary>
+/// <remarks>
+/// The library has no end-of-transmission ("transmit done") event, because it cannot know when
+/// a sound card has played the audio. The host raises that itself, when the last of
+/// <see cref="Samples"/> samples has left its output device plus its output latency, stamped
+/// with the same host clock it uses for receive times (see
+/// <see cref="Ms110dDemodulator.SamplesProcessed"/>). Key-up to that moment should equal
+/// <see cref="Seconds"/> plus the output latency.
+/// </remarks>
 /// <param name="WaveformNumber">Echoed from the settings.</param>
 /// <param name="Interleaver">Echoed from the settings.</param>
 /// <param name="ConstraintLength">Echoed from the settings.</param>
