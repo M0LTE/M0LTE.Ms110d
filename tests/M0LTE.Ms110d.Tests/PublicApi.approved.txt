@@ -66,9 +66,12 @@ namespace M0LTE.Ms110d
     {
         public Ms110dBurst(byte[] PayloadBits, M0LTE.Ms110d.Ms110dBurstEndReason Reason, int Blocks, M0LTE.Ms110d.Ms110dLockInfo? Lock = null) { }
         public int Blocks { get; init; }
+        public long EndSample { get; init; }
+        public long? LastFrameEndSample { get; init; }
         public M0LTE.Ms110d.Ms110dLockInfo? Lock { get; init; }
         public byte[] PayloadBits { get; init; }
         public M0LTE.Ms110d.Ms110dBurstEndReason Reason { get; init; }
+        public long StartSample { get; init; }
     }
     public enum Ms110dBurstEndReason
     {
@@ -98,6 +101,14 @@ namespace M0LTE.Ms110d
         public static M0LTE.Ms110d.Ms110dBurstPlan ForBlocks(M0LTE.Ms110d.Ms110dTxSettings settings, int blocks) { }
         public static M0LTE.Ms110d.Ms110dBurstPlan Plan(M0LTE.Ms110d.Ms110dTxSettings settings, int payloadBitCount) { }
     }
+    public sealed class Ms110dBurstStart : System.IEquatable<M0LTE.Ms110d.Ms110dBurstStart>
+    {
+        public Ms110dBurstStart(long LockSample, long DataStartSample, long FirstSeenSample, M0LTE.Ms110d.Ms110dLockInfo Lock) { }
+        public long DataStartSample { get; init; }
+        public long FirstSeenSample { get; init; }
+        public M0LTE.Ms110d.Ms110dLockInfo Lock { get; init; }
+        public long LockSample { get; init; }
+    }
     public sealed class Ms110dDemodOptions : System.IEquatable<M0LTE.Ms110d.Ms110dDemodOptions>
     {
         public Ms110dDemodOptions() { }
@@ -122,6 +133,7 @@ namespace M0LTE.Ms110d
         public int MfbOffered { get; }
         public int MfbSelected { get; }
         public double PeakSearchMetric { get; }
+        public long SamplesProcessed { get; }
         public int SignalAbsentReleases { get; }
         public M0LTE.Ms110d.Ms110dRxState State { get; }
         public int TurboAborted { get; }
@@ -131,6 +143,7 @@ namespace M0LTE.Ms110d
         public int TurboSkipped { get; }
         public event System.Action<M0LTE.Ms110d.Ms110dRxBlock>? BlockDecoded;
         public event System.Action<M0LTE.Ms110d.Ms110dBurst>? BurstCompleted;
+        public event System.Action<M0LTE.Ms110d.Ms110dBurstStart>? BurstStarted;
         public event System.Action<M0LTE.Ms110d.Complex32>? DataSymbolEqualized;
         public event System.Action<int, float[]>? FirstPassBlockLlrs;
         public event System.Action<string>? FrameDiagnostics;
@@ -207,6 +220,7 @@ namespace M0LTE.Ms110d
     {
         public Ms110dRxBlock(int Index, byte[] Bits) { }
         public byte[] Bits { get; init; }
+        public long EndSample { get; init; }
         public int Index { get; init; }
     }
     public enum Ms110dRxState

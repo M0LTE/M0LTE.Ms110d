@@ -52,7 +52,13 @@ public sealed record Ms110dLockInfo(
 /// <summary>One decoded input-data (interleaver) block.</summary>
 /// <param name="Index">Block index within the burst, from 0.</param>
 /// <param name="Bits">Decoded info bits (0/1 bytes).</param>
-public sealed record Ms110dRxBlock(int Index, byte[] Bits);
+public sealed record Ms110dRxBlock(int Index, byte[] Bits)
+{
+    /// <summary>The input sample (9600 Hz, counted as <see cref="Ms110dDemodulator.SamplesProcessed"/>)
+    /// at which the block's last mini-probe ended. For WN 0, which has no probes, the end of its
+    /// last symbol.</summary>
+    public long EndSample { get; init; }
+}
 
 /// <summary>A completed burst.</summary>
 /// <param name="PayloadBits">Decoded bits up to (not including) the EOM, or all decoded
@@ -61,7 +67,40 @@ public sealed record Ms110dRxBlock(int Index, byte[] Bits);
 /// <param name="Blocks">Input-data blocks decoded.</param>
 /// <param name="Lock">What the preamble announced for the burst, if it got that far.</param>
 public sealed record Ms110dBurst(
-    byte[] PayloadBits, Ms110dBurstEndReason Reason, int Blocks, Ms110dLockInfo? Lock = null);
+    byte[] PayloadBits, Ms110dBurstEndReason Reason, int Blocks, Ms110dLockInfo? Lock = null)
+{
+    /// <summary>The burst's <see cref="Ms110dBurstStart.DataStartSample"/>, repeated so a
+    /// consumer that only listens for completed bursts has both ends. 0 when the burst never
+    /// locked.</summary>
+    public long StartSample { get; init; }
+
+    /// <summary>The value of <see cref="Ms110dDemodulator.SamplesProcessed"/> when the exit was
+    /// decided: at the decode of the last block for <see cref="Ms110dBurstEndReason.Eom"/> and
+    /// <see cref="Ms110dBurstEndReason.MaxInputDataBlocks"/>, otherwise when that exit fired.</summary>
+    public long EndSample { get; init; }
+
+    /// <summary>The input sample at which the last decoded block's final mini-probe ended, or
+    /// null when no block was decoded. The on-air end of a burst that finished by EOM or block
+    /// count, without the receiver's decode latency. For <see cref="Ms110dBurstEndReason.SignalLost"/>
+    /// it is the end of the last decoded block, which is before the signal actually stopped, so
+    /// treat it as a lower bound.</summary>
+    public long? LastFrameEndSample { get; init; }
+}
+
+/// <summary>Raised when a burst has been locked: the preamble's WID has been read and accepted.
+/// A rejected candidate never raises it. Sample values count input samples at 9600 Hz since the
+/// first <see cref="Ms110dDemodulator.Process"/> call after construction or
+/// <see cref="Ms110dDemodulator.Reset"/>; the host converts them to its own clock.</summary>
+/// <param name="LockSample"><see cref="Ms110dDemodulator.SamplesProcessed"/> when the event is
+/// raised.</param>
+/// <param name="DataStartSample">The input sample at which the first data chip arrived. A
+/// position on the air, earlier than <paramref name="LockSample"/>.</param>
+/// <param name="FirstSeenSample">The input sample of chip 0 of the earliest preamble super-frame
+/// the receiver matched. The transmission may have started earlier, so this is a lower bound on
+/// how long the signal has been on the air, not the keying instant.</param>
+/// <param name="Lock">What the preamble announced.</param>
+public sealed record Ms110dBurstStart(
+    long LockSample, long DataStartSample, long FirstSeenSample, Ms110dLockInfo Lock);
 
 /// <summary>
 /// Receiver options - the RX half of the D.5.4.6 remote-control parameter list. Any

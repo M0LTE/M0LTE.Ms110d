@@ -90,6 +90,9 @@ public sealed class Ms110dDemodulator
     private FirFilter _rxFilterRe;
     private FirFilter _rxFilterIm;
     private readonly float[] _rxPulse;
+    private long _samplesProcessed;
+    private long _burstStartSample;
+    private long _lastBlockEndSample = -1;
     private readonly Complex32[] _mixTable;
     private readonly Complex32[][] _mfReference; // [bin][288] conj(fixed chip)·e^{−jθ_bin·i}
 
@@ -618,6 +621,18 @@ public sealed class Ms110dDemodulator
     /// <summary>Fires when a burst ends (any D.5.4.5 exit).</summary>
     public event Action<Ms110dBurst>? BurstCompleted;
 
+    /// <summary>Fires when a burst is locked: the preamble's WID has been read and accepted.
+    /// Not raised for a candidate that is later rejected. <see cref="CarrierDetect"/> keeps its
+    /// earlier meaning (true from the candidate peak).</summary>
+    public event Action<Ms110dBurstStart>? BurstStarted;
+
+    /// <summary>Input samples (9600 Hz) taken by <see cref="Process"/> since construction or the
+    /// last <see cref="Reset"/>; a clock only while audio is fed without gaps. Every sample
+    /// field on the events counts in these units. A host converts to its own clock with an
+    /// anchor it re-takes at each <see cref="Reset"/> and whenever it resumes feeding after a
+    /// gap.</summary>
+    public long SamplesProcessed => Volatile.Read(ref _samplesProcessed);
+
     /// <summary>Current receiver state.</summary>
     public Ms110dRxState State => _state;
 
@@ -641,6 +656,7 @@ public sealed class Ms110dDemodulator
     /// <summary>Clears all receive state back to Searching.</summary>
     public void Reset()
     {
+        Volatile.Write(ref _samplesProcessed, 0);
         _written = 0;
         _mixPhase = 0;
         _decimateToggle = false;
@@ -723,6 +739,7 @@ public sealed class Ms110dDemodulator
 
         foreach (float sample in samples)
         {
+            Volatile.Write(ref _samplesProcessed, _samplesProcessed + 1);
             Complex32 mixed = _mixTable[_mixPhase] * sample;
             _mixPhase = (_mixPhase + 3) & 15;
             float re = _rxFilterRe.Next(mixed.Re);
@@ -1273,6 +1290,7 @@ public sealed class Ms110dDemodulator
             return;
         }
 
+        long firstSeenSample = SampleOfHalfChip(_trackFromEarliest ? _earliestChip0 : _chip0);
         if (_trackFromEarliest)
         {
             // Issue #8: the strongest peak read the preamble; the equaliser starts on the
@@ -1315,6 +1333,8 @@ public sealed class Ms110dDemodulator
         _burstBits.Clear();
         _dataStartChip = ChipsSuperframe * (long)(count + 1);
         _trackingInitialized = false;
+        _lastBlockEndSample = -1;
+        _burstStartSample = SampleOfChip(_dataStartChip);
         _state = Ms110dRxState.Tracking;
 
         // Issue #10: from here the search runs on in the background, starting where this
@@ -1324,6 +1344,9 @@ public sealed class Ms110dDemodulator
         _bestMetric = 0;
         _bestStart = -1;
         Array.Clear(_metricRing);
+
+        BurstStarted?.Invoke(new Ms110dBurstStart(
+            SamplesProcessed, _burstStartSample, firstSeenSample, _lock!));
     }
 
     /// <summary>How many trailing preamble super-frames the carrier re-fit may use: all
@@ -1555,6 +1578,17 @@ public sealed class Ms110dDemodulator
     }
 
     // ------------------------------------------------------------------ sample access
+
+    /// <summary>The input sample index (see <see cref="SamplesProcessed"/>) of a T/2 position:
+    /// <c>2 t + 1</c>, less the receive filter's group delay. T/2 sample <c>p</c> is the
+    /// filter output for input sample <c>2p + 1</c>.</summary>
+    private long SampleOfHalfChip(double halfChips)
+    {
+        return (long)Math.Round((2.0 * halfChips) + 1 - ((_rxPulse.Length - 1) / 2.0));
+    }
+
+    /// <summary>The input sample of a chip, at the receiver's current timing.</summary>
+    private long SampleOfChip(double chip) => SampleOfHalfChip(PositionOfChip(chip));
 
     private double PositionOfChip(double chip)
     {
@@ -3422,7 +3456,8 @@ public sealed class Ms110dDemodulator
 
         int searchFrom = Math.Max(0, _burstBits.Count - 31);
         _burstBits.AddRange(info);
-        BlockDecoded?.Invoke(new Ms110dRxBlock(_blockIndex, info));
+        _lastBlockEndSample = SampleOfChip(_mode!.Wn == 0 ? _symbolChip : _frameChip);
+        BlockDecoded?.Invoke(new Ms110dRxBlock(_blockIndex, info) { EndSample = _lastBlockEndSample });
         _blockIndex++;
 
         int eom = Ms110dFraming.FindEom(_burstBits, searchFrom);
@@ -5283,6 +5318,8 @@ public sealed class Ms110dDemodulator
         bool carry = _candPending && reason != Ms110dBurstEndReason.Terminated;
         bool altAvailable = _altAvailable;
         bool trackFromEarliest = _trackFromEarliest;
+        long startSample = lockInfo is null ? 0 : _burstStartSample;
+        long lastFrameEnd = _lastBlockEndSample;
         EndBurst();
         if (carry)
         {
@@ -5294,7 +5331,12 @@ public sealed class Ms110dDemodulator
             _trackFromEarliest = trackFromEarliest;
         }
 
-        BurstCompleted?.Invoke(new Ms110dBurst(payload, reason, blocks, lockInfo));
+        BurstCompleted?.Invoke(new Ms110dBurst(payload, reason, blocks, lockInfo)
+        {
+            StartSample = startSample,
+            EndSample = SamplesProcessed,
+            LastFrameEndSample = lastFrameEnd >= 0 ? lastFrameEnd : null,
+        });
     }
 
     private void EndBurst()
@@ -5315,6 +5357,7 @@ public sealed class Ms110dDemodulator
         _trackingInitialized = false;
         _blockLlrCount = 0;
         _blockIndex = 0;
+        _lastBlockEndSample = -1;
         _burstBits.Clear();
         // A burst ending mid-block (SignalLost/Terminate/EOM) must not leak this
         // block's frame positions or fading state into the next burst's turbo gate
