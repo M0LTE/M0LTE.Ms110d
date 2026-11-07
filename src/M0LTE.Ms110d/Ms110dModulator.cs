@@ -142,7 +142,9 @@ public sealed class Ms110dModulator
         return [.. symbols];
     }
 
-    /// <summary>Total burst duration for a payload, in seconds - preamble + frames.</summary>
+    /// <summary>Total burst duration for a payload, in seconds - preamble + frames. Omits the
+    /// 32-symbol EOT extension; <see cref="Ms110dBurstPlan.Plan"/> includes it and also gives
+    /// the exact sample count.</summary>
     public double BurstSeconds(int payloadBitCount)
     {
         Ms110dInterleaverParams il = Ms110dInterleaverParams.Get3k(_mode.Wn, _settings.Interleaver);
