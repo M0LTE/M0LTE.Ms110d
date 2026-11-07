@@ -108,7 +108,8 @@ public sealed record Ms110dBurstStart(
 /// </summary>
 public sealed record Ms110dDemodOptions
 {
-    /// <summary>Stop after this many input-data blocks; 0 = unlimited (D.5.4.5.3).</summary>
+    /// <summary>Stop after this many input-data blocks; 0 = unlimited (D.5.4.5.3). The initial
+    /// value of <see cref="Ms110dDemodulator.MaxInputDataBlocks"/>, which can be changed at run time.</summary>
     public int MaxInputDataBlocks { get; init; }
 
     /// <summary>Normalized matched-filter threshold for preamble detection (house number,

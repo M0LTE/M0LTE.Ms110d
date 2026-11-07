@@ -130,6 +130,7 @@ namespace M0LTE.Ms110d
         public bool CarrierDetect { get; }
         public int CollapseResolves { get; }
         public M0LTE.Ms110d.Ms110dLockInfo? Lock { get; }
+        public int MaxInputDataBlocks { get; set; }
         public int MfbOffered { get; }
         public int MfbSelected { get; }
         public double PeakSearchMetric { get; }

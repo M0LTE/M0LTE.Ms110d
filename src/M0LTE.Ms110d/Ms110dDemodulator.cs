@@ -91,6 +91,7 @@ public sealed class Ms110dDemodulator
     private FirFilter _rxFilterIm;
     private readonly float[] _rxPulse;
     private long _samplesProcessed;
+    private int _maxInputDataBlocks;
     private long _burstStartSample;
     private long _lastBlockEndSample = -1;
     private readonly Complex32[] _mixTable;
@@ -335,6 +336,7 @@ public sealed class Ms110dDemodulator
     public Ms110dDemodulator(Ms110dDemodOptions? options = null)
     {
         _options = options ?? new Ms110dDemodOptions();
+        _maxInputDataBlocks = _options.MaxInputDataBlocks;
         Ms110dModulator.ValidateRollOff(_options.RollOff, nameof(options));
         _rxPulse = Ms110dModulator.DesignPulse(_options.RollOff);
         _rxFilterRe = new FirFilter(_rxPulse);
@@ -646,6 +648,26 @@ public sealed class Ms110dDemodulator
     /// <summary>True from preamble detection until the burst ends.</summary>
     public bool CarrierDetect => _state != Ms110dRxState.Searching;
 
+    /// <summary>The run-time input-data-block limit (D.5.4.5.3, D.5.4.6 c): a burst ends after
+    /// this many blocks, 0 meaning unlimited. Starts as <see cref="Ms110dDemodOptions.MaxInputDataBlocks"/>
+    /// and may be changed at any time, from any thread. It applies to the burst in progress and to
+    /// every later burst, and survives <see cref="Reset"/>.</summary>
+    /// <remarks>Setting a value at or below the number of blocks already decoded in the current
+    /// burst ends that burst with <see cref="Ms110dBurstEndReason.MaxInputDataBlocks"/> at the
+    /// start of the next <see cref="Process"/> call, before it consumes a sample, never inside the
+    /// setter: events are only ever raised from <c>Process</c>, on the thread that feeds
+    /// audio.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
+    public int MaxInputDataBlocks
+    {
+        get => Volatile.Read(ref _maxInputDataBlocks);
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            Volatile.Write(ref _maxInputDataBlocks, value);
+        }
+    }
+
     /// <summary>Terminate-receive command (D.5.4.5.2): ends any in-progress burst and
     /// returns to acquisition.</summary>
     public void Terminate()
@@ -735,6 +757,13 @@ public sealed class Ms110dDemodulator
         {
             throw new InvalidOperationException(
                 "genie stream behind the noisy stream: call WriteGenie with the covering span before Process");
+        }
+
+        int maxBlocks = MaxInputDataBlocks;
+        if (maxBlocks > 0 && _state == Ms110dRxState.Tracking && _blockIndex >= maxBlocks)
+        {
+            // The limit was lowered to or below what this burst has already decoded.
+            CompleteBurst(Ms110dBurstEndReason.MaxInputDataBlocks);
         }
 
         foreach (float sample in samples)
@@ -3469,7 +3498,8 @@ public sealed class Ms110dDemodulator
             return;
         }
 
-        if (_options.MaxInputDataBlocks > 0 && _blockIndex >= _options.MaxInputDataBlocks)
+        int maxBlocks = MaxInputDataBlocks;
+        if (maxBlocks > 0 && _blockIndex >= maxBlocks)
         {
             CompleteBurst(Ms110dBurstEndReason.MaxInputDataBlocks);
         }
