@@ -11,8 +11,9 @@ namespace M0LTE.Ms110d.Tests;
 /// in CI. The section 2.5 sweep runs behind environment variables:
 /// <c>MS110D_SNR_SWEEP=1</c> for the AWGN points and <c>MS110D_MASKS_POOR=1</c> for the Poor
 /// and Moderate points, with <c>MS110D_SNR_WN</c> (comma list), <c>MS110D_SNR_IL</c>
-/// (Short, Long or both, comma list), <c>MS110D_SNR_BURSTS</c> (AWGN bursts per point, default
-/// 20), <c>MS110D_SNR_SECONDS</c> (fading signal seconds per point, default 60) and
+/// (Short, Long or both, comma list), <c>MS110D_SNR_SEED_OFFSET</c> (added to every seed, for
+/// a realisation set disjoint from the one the equaliser loss table was fitted on),
+/// <c>MS110D_SNR_BURSTS</c> (AWGN bursts per point, default 20), <c>MS110D_SNR_SECONDS</c> (fading signal seconds per point, default 60) and
 /// <c>MS110D_MASK_WORKERS</c> (parallel workers). Report lines go to the test output and, with
 /// <c>MS110D_SNR_LOG=path</c>, are appended to that file.
 /// </summary>
@@ -286,6 +287,13 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
         return int.TryParse(Environment.GetEnvironmentVariable("MS110D_MASK_WORKERS"), out int w) ? Math.Max(1, w) : 1;
     }
 
+    // A disjoint realisation set for an out-of-sample check of the equaliser loss table,
+    // which was fitted on the default seeds (as MS110D_MASK_SEED_OFFSET in the mask tests).
+    private static int SeedOffset()
+    {
+        return int.TryParse(Environment.GetEnvironmentVariable("MS110D_SNR_SEED_OFFSET"), out int o) ? o : 0;
+    }
+
     private static int[] SweepWns()
     {
         string? s = Environment.GetEnvironmentVariable("MS110D_SNR_WN");
@@ -331,7 +339,7 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
         var results = new ConcurrentBag<(int Index, BurstSample Sample)>();
         Parallel.For(0, bursts, new ParallelOptions { MaxDegreeOfParallelism = Workers() }, b =>
         {
-            results.Add((b, RunBurst(wn, il, blocks, snrDb, paths, seed + (b * 1000))));
+            results.Add((b, RunBurst(wn, il, blocks, snrDb, paths, seed + SeedOffset() + (b * 1000))));
         });
 
         return new PointResult(channel, wn, il, snrDb, results.OrderBy(r => r.Index).Select(r => r.Sample).ToList());

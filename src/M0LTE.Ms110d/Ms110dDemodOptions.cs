@@ -64,7 +64,9 @@ public sealed record Ms110dRxBlock(int Index, byte[] Bits)
     /// preamble symbols (110D C.6.1 convention). Measured from each probe's residual at the
     /// equaliser output before the probe's own solve, so on a fading channel it is an effective
     /// post-equaliser SNR, weighted towards the fades, which saturates well below the channel's
-    /// average SNR (docs/snr-calibration.md). Clamped to [-10, +40] dB; a value at the
+    /// average SNR (docs/snr-calibration.md). On AWGN it reads the channel SNR, calibrated at the
+    /// default equaliser settings (not with <see cref="Ms110dDemodOptions.RlsForgettingFactor"/>
+    /// or <see cref="Ms110dDemodOptions.TrackRidge"/> set). Clamped to [-10, +40] dB; a value at the
     /// clamp means beyond what the estimator resolves. Null for WN 0 (no probes) and in genie
     /// mode.</summary>
     public double? SnrDb { get; init; }

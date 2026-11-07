@@ -12,13 +12,13 @@ What the SNR estimator (`docs/design-5066-support.md` section 2) reads against t
 Commands (16-core box, 27 minutes in all):
 
 ```sh
-MS110D_SNR_SWEEP=1 MS110D_SNR_BURSTS=20 MS110D_MASK_WORKERS=6 MS110D_SNR_LOG=awgn.log \
+MS110D_SNR_SWEEP=1 MS110D_SNR_BURSTS=20 MS110D_MASK_WORKERS=6 MS110D_SNR_LOG=$PWD/awgn.log \
   dotnet run -c Release --project tests/M0LTE.Ms110d.Tests -- -method M0LTE.Ms110d.Tests.Ms110dSnrEstimateTests.Sweep_Awgn
-MS110D_MASKS_POOR=1 MS110D_SNR_SECONDS=60 MS110D_MASK_WORKERS=8 MS110D_SNR_LOG=fading.log \
+MS110D_MASKS_POOR=1 MS110D_SNR_SECONDS=60 MS110D_MASK_WORKERS=8 MS110D_SNR_LOG=$PWD/fading.log \
   dotnet run -c Release --project tests/M0LTE.Ms110d.Tests -- -method M0LTE.Ms110d.Tests.Ms110dSnrEstimateTests.Sweep_PoorAndModerate
 ```
 
-`MS110D_SNR_WN` and `MS110D_SNR_IL` (comma lists) narrow a run. Both tests passed their gates at this commit.
+`MS110D_SNR_WN` and `MS110D_SNR_IL` (comma lists) narrow a run, and `MS110D_SNR_SEED_OFFSET` moves every seed to a disjoint realisation set. Give `MS110D_SNR_LOG` an absolute path: the test host runs from its output directory, so a relative one lands there. The runs are seed-deterministic and independent of the worker count. Both tests passed their gates at this commit.
 
 ## Equaliser loss (in the code)
 
@@ -35,6 +35,8 @@ Raw bias before the correction, over the +5, +10, +20 and 30 dB points of both i
 | 7 | -1.35 | -1.42 to -1.25 | 1.35 |
 | 8 | -1.52 | -1.67 to -1.36 | 1.52 |
 | 13 | -1.25 | -1.32 to -1.19 | 1.25 |
+
+Out-of-sample check (review, same code): the AWGN sweep for WN 3, 4, 5, 7, 8 and 13 at both interleavers on a disjoint seed set (`MS110D_SNR_SEED_OFFSET=500000`) passes every gate, with burst bias within 0.25 dB above the mask point (worst WN 5 Short, -0.12 to -0.23 dB) and within 0.42 dB at it (WN 3 Long -0.42, WN 8 Short -0.34). So the table is not fitted to the realisations it was measured on. It does read 0.2 to 0.4 dB lower at the mask point than above it on WN 3, 4 and 8, where decision errors start to add to the equaliser's excess noise.
 
 WN 1 and 2 (K = 48) read within 0.35 dB of the set SNR at their mask point without a correction and get none. Their bias grows with SNR instead (see below).
 
@@ -283,9 +285,21 @@ Every fading point:
 | 13 | Long | Moderate | 17 | 8.32 | -8.68 | 1.21 | 2.83 | 24/512 | 0/8 |
 | 13 | Long | Moderate | 23 | 9.02 | -13.98 | 1.41 | 3.20 | 24/512 | 0/8 |
 
+## What the estimate is, and what phase 7 must calibrate
+
+On fading the estimate is an effective post-equaliser SNR: what the decoder of this waveform actually sees, fades and tracking error included. That is the right kind of quantity for a rate choice, because it is what decides whether a block decodes. It is not the channel's average SNR, and the measurements above show it cannot be turned back into one: above the mask SNR the fading, not the noise, sets it. So the design's plan of "estimate minus a per-WN Poor offset, compared with the D-LXIV row" (design section 2.5) does not work and is replaced by the following.
+
+- **Calibrate decoding against the estimate, not the estimate against the set SNR.** Phase 7 measures block error rate (and then D_PDU error rate) as a function of the burst estimate, per WN and interleaver, and sets the ladder's thresholds where that curve crosses the target. The set SNR is only the knob that moves the simulation along the curve.
+- **Measure across the transition.** The points here start at the mask SNR, where most WNs already decode almost every block. The thresholds live below it: phase 7 needs points from where block errors are near 100% up to where they vanish, with hundreds of blocks per point (the Long interleaver gave 6 to 9 blocks a point here, so it needs runs ten or more times longer, `MS110D_SNR_SECONDS=600` or more). The same applies to the burst spreads above, which come from 6 to 9 bursts a point.
+- **Predict the next burst, not the same block.** The block-error crossings above pair each block's estimate with that block's own decode, so a deep fade lowers both together. A rate choice uses the estimate from one burst to pick the waveform of a later one. Phase 7 pairs the burst estimate with the block error rate of the following burst, at the turnaround the 5066 exchange really has.
+- **Cross-waveform prediction is the hard part.** The estimate depends on the waveform it was measured on (probe spacing, frame length, equaliser): on Poor at 19 dB WN 3 reads 9.5 dB while WN 5 to 8 read 5 to 6 dB. The ladder needs, for the waveform it is on (a) and each waveform it might move to (b), the error rate of b given the estimate measured on a. That is a table per (a, b) pair, or a mapping from the estimate on a to the estimate on b measured on the same channels.
+- **Going up on fading cannot rest on the estimate alone.** WN 5 on Poor reads 3.6, 5.0 and 5.5 dB at 11, 17 and 23 dB set SNR: 1.9 dB of movement over 12 dB, against a burst spread of about 0.5 dB. A WN 5 estimate cannot tell a channel where only WN 5 works from one where WN 8 (Poor mask 23 dB) would. Rate increases on fading need another input, such as a run of clean bursts or a trial at the higher rate, with the estimate mainly useful for going down.
+- **Check whether the channel type drops out.** If block error rate against the estimate is the same curve on AWGN, Moderate and Poor, one table per waveform serves every channel and the ladder need not know the channel type. If not (the thin crossings above differ by up to 5 dB between Poor and Moderate), the spread between the curves is the margin the ladder must carry.
+
+The equaliser loss term moves every probe figure by the same per-WN constant, on fading as on AWGN. It makes the AWGN figure the channel SNR; for a calibration against block error rate per WN it changes nothing.
+
 ## Rules for a consumer
 
-From section 2.5 of the design, which still hold:
-
-- The offset is a property of the waveform the estimate was measured on: a figure measured on WN 3 is converted with WN 3's numbers before it is compared with another WN's D-LXIV row.
-- The offset is per channel type, and from the measurements above per SNR as well; the Moderate-to-Poor spread is the minimum margin.
+- Compare an estimate only with calibration data measured on the same waveform and interleaver.
+- On fading, treat the estimate as "how hard this channel is for this waveform", not as the channel SNR; do not subtract an offset to get a D-LXIV-comparable number.
+- The equaliser loss table holds for the default equaliser settings. A caller that sets `RlsForgettingFactor` or `TrackRidge` changes the equaliser, and the AWGN figure is then uncalibrated.
