@@ -79,6 +79,25 @@ namespace M0LTE.Ms110d
         SignalAbsent = 4,
         NewPreamble = 5,
     }
+    public sealed class Ms110dBurstPlan : System.IEquatable<M0LTE.Ms110d.Ms110dBurstPlan>
+    {
+        public Ms110dBurstPlan(int WaveformNumber, M0LTE.Ms110d.Ms110dInterleaverKind Interleaver, int ConstraintLength, int InputBitsPerBlock, int BytesPerBlock, int Blocks, int PayloadCapacityBits, int PreambleSymbols, int DataSymbols, int AirSymbols, double Seconds, int Samples, double BlockSeconds) { }
+        public int AirSymbols { get; init; }
+        public double BlockSeconds { get; init; }
+        public int Blocks { get; init; }
+        public int BytesPerBlock { get; init; }
+        public int ConstraintLength { get; init; }
+        public int DataSymbols { get; init; }
+        public int InputBitsPerBlock { get; init; }
+        public M0LTE.Ms110d.Ms110dInterleaverKind Interleaver { get; init; }
+        public int PayloadCapacityBits { get; init; }
+        public int PreambleSymbols { get; init; }
+        public int Samples { get; init; }
+        public double Seconds { get; init; }
+        public int WaveformNumber { get; init; }
+        public static M0LTE.Ms110d.Ms110dBurstPlan ForBlocks(M0LTE.Ms110d.Ms110dTxSettings settings, int blocks) { }
+        public static M0LTE.Ms110d.Ms110dBurstPlan Plan(M0LTE.Ms110d.Ms110dTxSettings settings, int payloadBitCount) { }
+    }
     public sealed class Ms110dDemodOptions : System.IEquatable<M0LTE.Ms110d.Ms110dDemodOptions>
     {
         public Ms110dDemodOptions() { }
