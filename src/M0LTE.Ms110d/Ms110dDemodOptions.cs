@@ -63,7 +63,8 @@ public sealed record Ms110dRxBlock(int Index, byte[] Bits)
     /// both in a 3 kHz bandwidth and the signal power the long-term average over data, probe and
     /// preamble symbols (110D C.6.1 convention). Measured from each probe's residual at the
     /// equaliser output before the probe's own solve, so on a fading channel it is an effective
-    /// post-equaliser SNR, weighted towards the fades. Clamped to [-10, +40] dB; a value at the
+    /// post-equaliser SNR, weighted towards the fades, which saturates well below the channel's
+    /// average SNR (docs/snr-calibration.md). Clamped to [-10, +40] dB; a value at the
     /// clamp means beyond what the estimator resolves. Null for WN 0 (no probes) and in genie
     /// mode.</summary>
     public double? SnrDb { get; init; }
@@ -135,7 +136,8 @@ public sealed record Ms110dBurstStart(
     /// definition as <see cref="Ms110dRxBlock.SnrDb"/>, available at lock for every waveform
     /// including WN 0. Measured before any equalisation with one complex gain per 32 chips, so
     /// it is a good figure on a flat channel and reads low on any channel with delay spread
-    /// (every echo counts as noise; on the Poor channel it caps near 0 dB). An early, coarse
+    /// (every echo counts as noise; on the Poor channel it stays within a few dB of 0 dB
+    /// whatever the SNR, docs/snr-calibration.md). An early, coarse
     /// number, not an input to a rate choice on its own. Clamped to [-10, +40] dB; null in genie
     /// mode.</summary>
     public double? PreambleSnrDb { get; init; }

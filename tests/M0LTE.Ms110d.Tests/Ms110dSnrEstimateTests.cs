@@ -355,6 +355,12 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
         return blockDev.Count > 1 ? Math.Sqrt(blockDev.Sum(d => d * d) / (blockDev.Count - 1)) : double.NaN;
     }
 
+    private static string Signed(double v)
+    {
+        string text = v.ToString("F2", CultureInfo.InvariantCulture);
+        return text.StartsWith('-') ? text : "+" + text;
+    }
+
     private string Describe(PointResult p)
     {
         (double bm, double bs) = Stats(p.BurstSnr);
@@ -364,9 +370,9 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
         int bad = blocks.Sum(b => b.ProbesBad), used = blocks.Sum(b => b.ProbesUsed);
         int blockErrors = blocks.Count(b => !b.Ok);
         return string.Create(CultureInfo.InvariantCulture,
-            $"[snr] {p.Channel} WN{p.Wn} {p.Il} set {p.SetSnr:F1} dB: burst mean {bm:F2} (bias {bm - p.SetSnr:+0.00;-0.00}) " +
+            $"[snr] {p.Channel} WN{p.Wn} {p.Il} set {p.SetSnr:F1} dB: burst mean {bm:F2} (bias {Signed(bm - p.SetSnr)}) " +
             $"sd {bs:F2} n={p.BurstSnr.Count}; block sd {blockStd:F2} n={blocks.Count}; preamble mean {pm:F2} " +
-            $"(bias {pm - p.SetSnr:+0.00;-0.00}) sd {ps:F2}; probes bad {bad}/{used}; block errors {blockErrors}/{blocks.Count}; " +
+            $"(bias {Signed(pm - p.SetSnr)}) sd {ps:F2}; probes bad {bad}/{used}; block errors {blockErrors}/{blocks.Count}; " +
             $"bursts not EOM {p.Bursts.Count(b => b.Reason != Ms110dBurstEndReason.Eom)}");
     }
 
