@@ -70,7 +70,10 @@ namespace M0LTE.Ms110d
         public long? LastFrameEndSample { get; init; }
         public M0LTE.Ms110d.Ms110dLockInfo? Lock { get; init; }
         public byte[] PayloadBits { get; init; }
+        public int ProbesBad { get; init; }
+        public int ProbesUsed { get; init; }
         public M0LTE.Ms110d.Ms110dBurstEndReason Reason { get; init; }
+        public double? SnrDb { get; init; }
         public long StartSample { get; init; }
     }
     public enum Ms110dBurstEndReason
@@ -108,6 +111,7 @@ namespace M0LTE.Ms110d
         public long FirstSeenSample { get; init; }
         public M0LTE.Ms110d.Ms110dLockInfo Lock { get; init; }
         public long LockSample { get; init; }
+        public double? PreambleSnrDb { get; init; }
     }
     public sealed class Ms110dDemodOptions : System.IEquatable<M0LTE.Ms110d.Ms110dDemodOptions>
     {
@@ -223,6 +227,9 @@ namespace M0LTE.Ms110d
         public byte[] Bits { get; init; }
         public long EndSample { get; init; }
         public int Index { get; init; }
+        public int ProbesBad { get; init; }
+        public int ProbesUsed { get; init; }
+        public double? SnrDb { get; init; }
     }
     public enum Ms110dRxState
     {

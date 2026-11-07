@@ -239,6 +239,9 @@ public sealed class Ms110dDemodulator
     private int _snrTailProbes;
     // C_mod in dB for the locked waveform: average frame power over the unit-power probe.
     private double _snrCmodDb;
+    // The locked waveform's measured equaliser loss (EqualiserLossDb), added back to the
+    // probe figure only.
+    private double _snrLossDb;
 
     /// <summary>Probe rows behind the last raised block's SNR (validation only).</summary>
     internal int LastBlockSnrRows { get; private set; }
@@ -1352,6 +1355,7 @@ public sealed class Ms110dDemodulator
         RefineCarrier(0, SuperframeChips(count, wn, il, k));
         _lock = new Ms110dLockInfo(wn, il, k, _lock!.CfoHz);
         _snrCmodDb = ModulationCorrectionDb(mode);
+        _snrLossDb = EqualiserLossDb(wn);
         double? preambleSnrDb = PreambleSnrDb(SuperframeChips(count, wn, il, k));
         ResetSnrBurst();
 
@@ -3517,7 +3521,7 @@ public sealed class Ms110dDemodulator
         _lastBlockEndSample = SampleOfChip(_mode!.Wn == 0 ? _symbolChip : _frameChip);
         double? blockSnrDb = _snrBlockProbes == 0 || _genieRing is not null
             ? null
-            : SnrDbFromSums(_snrBlockS, _snrBlockN);
+            : SnrDbFromSums(_snrBlockS, _snrBlockN, _snrLossDb);
         int blockProbes = _snrBlockProbes, blockBad = _snrBlockBad;
         LastBlockSnrRows = _snrBlockRows;
         ResetSnrBlock();
@@ -5398,7 +5402,7 @@ public sealed class Ms110dDemodulator
 
         double? burstSnrDb = _snrBurstProbes == 0 || _genieRing is not null
             ? null
-            : SnrDbFromSums(_snrBurstS, _snrBurstN);
+            : SnrDbFromSums(_snrBurstS, _snrBurstN, _snrLossDb);
         int burstProbes = _snrBurstProbes, burstBad = _snrBurstBad;
         EndBurst();
         if (carry)
@@ -5485,6 +5489,30 @@ public sealed class Ms110dDemodulator
         return 10.0 * Math.Log10(((mode.U * p) + mode.K) / (mode.U + mode.K));
     }
 
+    /// <summary>The equaliser's loss against an ideal matched filter on AWGN, per waveform, in
+    /// dB: how far the probe residual reads below the set SNR. Measured, not derived
+    /// (docs/snr-calibration.md): on WN 3 to 8 and 13 it is constant from the mask SNR to
+    /// 30 dB and the same at the Short and Long interleavers, so it is noise-proportional
+    /// excess at the equaliser output rather than a floor, and adding it back makes the AWGN
+    /// figure the set SNR. WN 1 and 2 (K = 48) read within half a dB of the set SNR at low SNR
+    /// without it and get none. The value is the mean AWGN bias over the mask + 5, mask + 10,
+    /// mask + 20 and 30 dB points of both interleavers at the commit the calibration names; if
+    /// the receiver's equaliser changes, the calibration is re-run and these move with it.</summary>
+    internal static double EqualiserLossDb(int wn)
+    {
+        return wn switch
+        {
+            3 => 1.86,
+            4 => 1.85,
+            5 => 1.27,
+            6 => 1.28,
+            7 => 1.35,
+            8 => 1.52,
+            13 => 1.25,
+            _ => 0,
+        };
+    }
+
     /// <summary>One probe's terms (design section 2.2): g = sum(y conj(p)) / n, S_p = |g|^2,
     /// N_p = sum(|y - g p|^2) / (n - 1). The probe symbols are unit-magnitude PSK.</summary>
     private static void ProbeSnrTerms(
@@ -5559,9 +5587,9 @@ public sealed class Ms110dDemodulator
         _snrTailProbes = 0;
     }
 
-    /// <summary>Signal and noise sums (per symbol, linear) to SNR in 3 kHz, dB, clamped to
-    /// [-10, +40].</summary>
-    private double SnrDbFromSums(double s, double n)
+    /// <summary>Signal and noise sums (per symbol, linear) to SNR in 3 kHz, dB, with
+    /// <paramref name="lossDb"/> added back, clamped to [-10, +40].</summary>
+    private double SnrDbFromSums(double s, double n, double lossDb)
     {
         if (!(s > 0))
         {
@@ -5573,7 +5601,7 @@ public sealed class Ms110dDemodulator
             return 40;
         }
 
-        double db = (10.0 * Math.Log10(s / n)) + SnrBandwidthDb + _snrCmodDb;
+        double db = (10.0 * Math.Log10(s / n)) + SnrBandwidthDb + _snrCmodDb + lossDb;
         return Math.Clamp(db, -10.0, 40.0);
     }
 
@@ -5605,6 +5633,6 @@ public sealed class Ms110dDemodulator
             sumN += n;
         }
 
-        return SnrDbFromSums(sumS, sumN);
+        return SnrDbFromSums(sumS, sumN, lossDb: 0);
     }
 }

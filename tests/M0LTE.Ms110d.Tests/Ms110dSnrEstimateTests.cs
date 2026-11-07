@@ -337,12 +337,10 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
         return new PointResult(channel, wn, il, snrDb, results.OrderBy(r => r.Index).Select(r => r.Sample).ToList());
     }
 
-    private string Describe(PointResult p)
+    /// <summary>Block spread about each burst's own mean: the estimator's noise, not the
+    /// burst-to-burst spread (which on fading is the channel).</summary>
+    private static double BlockSd(PointResult p)
     {
-        (double bm, double bs) = Stats(p.BurstSnr);
-        (double pm, double ps) = Stats(p.PreambleSnr);
-        // Block spread about each burst's own mean: the estimator's noise, not the burst-to-burst
-        // spread (which on fading is the channel).
         var blockDev = new List<double>();
         foreach (BurstSample burst in p.Bursts)
         {
@@ -354,7 +352,14 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
             }
         }
 
-        double blockStd = blockDev.Count > 1 ? Math.Sqrt(blockDev.Sum(d => d * d) / (blockDev.Count - 1)) : double.NaN;
+        return blockDev.Count > 1 ? Math.Sqrt(blockDev.Sum(d => d * d) / (blockDev.Count - 1)) : double.NaN;
+    }
+
+    private string Describe(PointResult p)
+    {
+        (double bm, double bs) = Stats(p.BurstSnr);
+        (double pm, double ps) = Stats(p.PreambleSnr);
+        double blockStd = BlockSd(p);
         List<BlockSample> blocks = p.Blocks;
         int bad = blocks.Sum(b => b.ProbesBad), used = blocks.Sum(b => b.ProbesUsed);
         int blockErrors = blocks.Count(b => !b.Ok);
@@ -399,6 +404,13 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
                 double mask = MaskSnr[wn].Awgn;
                 double[] points = [mask, mask + 5, mask + 10, mask + 20, 30];
                 points = points.Distinct().Order().ToArray();
+                // The bias and block-spread gates run from the mask SNR up to the lower of
+                // mask + 20 dB and 30 dB. WN 1 and 2 at the Short interleaver stop at mask + 5 dB:
+                // their K = 48 equaliser converges over seconds at high SNR, longer than a Short
+                // burst, so the figure there is the lower effective SNR the equaliser really
+                // delivers, not an estimator error (docs/snr-calibration.md).
+                double gateTop = wn is 1 or 2 && il == Ms110dInterleaverKind.Short ? mask + 5 : Math.Min(mask + 20, 30);
+                double blockSdLimit = il == Ms110dInterleaverKind.Long ? 0.5 : 1.0;
                 var results = new List<PointResult>();
                 foreach (double snr in points)
                 {
@@ -406,9 +418,14 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
                     results.Add(p);
                     Report(Describe(p));
                     (double mean, _) = Stats(p.BurstSnr);
-                    if (snr <= Math.Min(mask + 20, 30) && Math.Abs(mean - snr) > 1.0)
+                    if (snr <= gateTop && Math.Abs(mean - snr) > 1.0)
                     {
                         failures.Add($"WN{wn} {il} {snr} dB: burst bias {mean - snr:F2}");
+                    }
+
+                    if (snr <= gateTop && BlockSd(p) > blockSdLimit)
+                    {
+                        failures.Add($"WN{wn} {il} {snr} dB: block sd {BlockSd(p):F2}");
                     }
 
                     (double pmean, _) = Stats(p.PreambleSnr);
@@ -441,6 +458,7 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
             "set MS110D_MASKS_POOR=1 for the section 2.5 Poor and Moderate points");
         double seconds = double.TryParse(Environment.GetEnvironmentVariable("MS110D_SNR_SECONDS"),
             NumberStyles.Float, CultureInfo.InvariantCulture, out double sec) ? sec : 60;
+        var failures = new List<string>();
         foreach (int wn in SweepWns())
         {
             foreach (Ms110dInterleaverKind il in SweepInterleavers())
@@ -461,6 +479,19 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
                             90_000 + (wn * 100) + (int)il + (name == "Poor" ? 0 : 50));
                         results.Add(p);
                         Report(Describe(p));
+                        // Section 2.5: on Poor the value is recorded, the repeatability gated.
+                        if (name == "Poor" && Stats(p.BurstSnr).Std >= 2.0)
+                        {
+                            failures.Add($"Poor WN{wn} {il} {snr} dB: burst sd {Stats(p.BurstSnr).Std:F2}");
+                        }
+                    }
+
+                    for (int i = 1; i < results.Count; i++)
+                    {
+                        if (name == "Poor" && Stats(results[i].BurstSnr).Mean <= Stats(results[i - 1].BurstSnr).Mean)
+                        {
+                            failures.Add($"Poor WN{wn} {il}: not monotonic at {results[i].SetSnr} dB");
+                        }
                     }
 
                     Report(string.Create(CultureInfo.InvariantCulture,
@@ -468,5 +499,7 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
                 }
             }
         }
+
+        failures.Should().BeEmpty();
     }
 }
