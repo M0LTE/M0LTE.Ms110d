@@ -59,7 +59,7 @@ MS110D_CAL_PROFILE=smoke MS110D_CAL_MERGE=1 MS110D_CAL_OUT=/tmp/cal-smoke \
 
 ## Full run on one spot instance
 
-Measured speed and size: see "Timing" below. Memory is small (about 20 MB a worker).
+Measured speed and size: see "Timing" below. Memory: about 50 MB a worker on a mid-size job (4 workers peaked at 200 MB for the whole process), and the longest jobs hold a few hundred bursts, so allow up to 150 MB a worker: under 30 GB for 192 workers.
 
 1. Instance: 192 vCPUs, Linux x64 (for example c7a.48xlarge). Put `MS110D_CAL_OUT` on a disk that survives a reboot.
 2. Install .NET 10 and set `DOTNET_ROOT`, or the test host will not start:
@@ -93,6 +93,7 @@ Measured speed and size: see "Timing" below. Memory is small (about 20 MB a work
    MS110D_CAL_MERGE=1 MS110D_CAL_OUT=/data/cal \
      dotnet run -c Release --no-build --project tests/M0LTE.Ms110d.Tests -- -method M0LTE.Ms110d.Tests.Ms110dCalibrationSweep.Merge
    grep -A3 '"merge"' /data/cal/ms110d-cs-*/meta.json   # complete: true
+   grep '"commit"' /data/cal/ms110d-cs-*/meta.json      # a SHA, not "unknown" (build from a git clone)
    tar czf /data/cal-ms110d-cs.tar.gz -C /data/cal ms110d-cs-0.6.1
    ```
 
@@ -118,11 +119,6 @@ The review pilot of 2026-11-08 (0.6.1, the earlier windows of 4.5 dB below to 3 
 
 ## Timing
 
-Measured on 2026-11-08 at commit ae8ab35 (0.6.1) on a shared 16-core box that was oversubscribed by other work at the time (load about 20), 6 workers:
+Measured on 2026-11-08 by the review, at the windows above (0.6.1 plus this branch), on studybox (Intel i7-3770, 4 cores, 4 workers, otherwise idle): AWGN and Poor, WN 1, 4, 6 and 8 at every interleaver, the two middle points each, one cycle: 4 jobs, 2.3 signal-hours, 0.21 (AWGN) to 0.28 (Poor) core-seconds per signal-second, 0.28 overall. The first measurement (ae8ab35, an oversubscribed 16-core box) gave 0.10 to 0.27.
 
-| Run | Signal | Speed |
-|---|---|---|
-| Smoke profile, 4 jobs | 0.3 h | 0.10 (AWGN) to 0.27 (Poor-SSB) core-seconds per signal-second |
-| Full rung mix, AWGN and Poor, 3 middle points each, one cycle | 4 jobs, 6.3 h | 0.25 core-seconds per signal-second |
-
-The full profile is 1712 jobs and about 1590 signal-hours (`MS110D_CAL_PLAN=1` prints it), so about 400 core-hours at 0.25: about 2 to 2.5 hours on 192 cores, the longest single job (2.3 signal-hours, started first) about 35 minutes. Allow 3 hours. That is more signal than the calibration plan's 850 signal-hours (the 6 s gaps, and the 56 s WN 1 bursts that one full D_PDU needs) but fewer core-hours than its 600, because the demodulator runs faster than the 0.35 to 0.7 the plan assumed.
+The full profile is 1357 jobs and about 1850 signal-hours (`MS110D_CAL_PLAN=1` prints it), so about 520 core-hours at 0.28: about 2.7 hours on 192 vCPUs of a 2012 desktop core's speed, less on current server cores (a c7a vCPU is a whole Zen 4 core). The longest single job is 4.6 signal-hours, about 80 minutes, and starts first. Allow 3 hours. That is more signal than the calibration plan's 850 signal-hours (the 6 s gaps, the 56 s WN 1 bursts that one full D_PDU needs, and the wider windows) but fewer core-hours than its 600.
