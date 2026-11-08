@@ -9,7 +9,7 @@ The code is `tests/M0LTE.Ms110d.Tests/Ms110dCalibrationSweep.cs` and `tests/M0LT
 - **Channels**: AWGN, Poor, Moderate, AWGN with the SSB band-pass and Poor with the SSB band-pass (400 to 2600 Hz at -6 dB, on both the sending and the receiving radio).
 - **Grid**: set SNR in 1.5 dB steps. Each rung is measured over a window around its expected error transition (from the D-LXIV figures, see `CalibrationPlan.Window`), plus the points where its two ladder neighbours either side are measured. About 20 to 27 points per channel.
 - **SNR reference**: on air. The set SNR is the signal power at the channel input, after the transmit passband where there is one, over the noise in 3 kHz added at the receiving antenna (before the receive passband). Every burst is scaled to the same on-air power, so each rung meets the set SNR (WN 8's QAM would otherwise sit 0.8 dB lower).
-- **Schedule**: each point sends a cycle of bursts with a 6 s gap between them (the 5066 turnaround until P7-8 measures it). The cycle is an Eulerian circuit of the pairs (a, b) with b up to four ladder places either side of a, so every pair the table needs follows exactly once a cycle and every rung is sent the same number of times. A point runs as many cycles as its slowest rung needs for at least 300 blocks and, on fading, at least 20 minutes of signal. Each cycle is one job with its own continuous channel realisation and one demodulator running throughout.
+- **Schedule**: each point sends a cycle of bursts with a 6 s gap between them (the 5066 turnaround until P7-8 measures it). The cycle is an Eulerian circuit of the pairs (a, b) with b up to eight places either side of a in the prior order of all 36 rungs, so every pair follows exactly once a cycle and every rung is sent the same number of times. Eight, not the plan's two above and a few below, because the final ladder drops the rungs a faster rung beats, so its neighbours can be several prior places apart (WN 13 Long to WN 6 Long is eight). Pairs further apart come from `own.tsv` by set SNR: the fading decorrelates in well under a second (1 Hz and 0.5 Hz Doppler spread), so across the 6 s gap one burst's channel is independent of the one before, and `next.tsv` carries the set SNR so the near pairs can check that. A point runs as many cycles as its slowest rung needs for at least 300 blocks and, on fading, at least 20 minutes of signal. Each cycle is one job with its own continuous channel realisation and one demodulator running throughout.
 - **Bursts**: a fixed number of blocks per rung (about 12 s, longer for rungs with long blocks, and at least one full D_PDU, so about 56 s on WN 1 and 29 s on WN 2), listed in `meta.json`.
 - **D_PDUs**: laid over each burst as M0LTE.S5066's planner lays a bulk transfer to an Ed4 peer: segments of up to 1020 bytes (MAX-SEGMENT 255), 19 bytes of overhead, block aligned where a block holds a D_PDU and straddling whole blocks where it does not. A D_PDU counts as an error if any bit in it is wrong or missing.
 
@@ -22,8 +22,8 @@ Under `MS110D_CAL_OUT` (an absolute path):
 | `plan.json` | Everything that fixes the results. A resumed run or a shard refuses to run against a different plan | No (it is inside `meta.json`) |
 | `raw/<job>.tsv` | One line per burst sent. Written whole when the job finishes, so a killed job just runs again | No, unless asked |
 | `progress.log` | One line per finished job, with the running speed and time to go | No |
-| `ms110d-cs-<version>/own.tsv` | channel, rung, set SNR, estimate bin (5 tenths), bursts, blocks, block errors, D_PDUs, D_PDU errors | Yes |
-| `ms110d-cs-<version>/next.tsv` | channel, rung a, rung b, gap, bin of the estimate on a, then pairs, D_PDUs, D_PDU errors, blocks and block errors of the burst on b | Yes |
+| `ms110d-cs-<version>/own.tsv` | channel, rung, set SNR, estimate bin (5 tenths), bursts, blocks, block errors, D_PDUs, D_PDU errors, clean bursts (no D_PDU error) | Yes |
+| `ms110d-cs-<version>/next.tsv` | channel, rung a, rung b, set SNR, gap, bin of the estimate on a, then pairs, D_PDUs, D_PDU errors, blocks, block errors and clean bursts of the burst on b. The plan's columns are these summed over set SNR | Yes |
 | `ms110d-cs-<version>/meta.json` | Modem implementation, version and commit; HfChannel version; SSB edges; seeds; burst length and D_PDU layout per rung; every point's schedule; the grid; whether every job merged | Yes |
 | `ms110d-cs-<version>/audit-sample.tsv` | 1% of the raw lines, chosen by hash | Yes |
 
@@ -36,6 +36,7 @@ The directory name says which modem the numbers belong to (`ms110d-cs-0.6.1` is 
 | `MS110D_CAL_SWEEP=1` | Run the sweep (test `Run`) |
 | `MS110D_CAL_MERGE=1` | Merge the raw records into the tables (test `Merge`) |
 | `MS110D_CAL_PLAN=1` | Print the points, burst lengths, job count and signal-hours (test `Plan`) |
+| `MS110D_CAL_PILOT=1` | Check the windows: a few bursts of each rung alone at the bottom and top of its window on each channel, into `pilot.tsv` (test `Pilot`; `MS110D_CAL_PILOT_DRY=1` prints the size only) |
 | `MS110D_CAL_OUT` | Output directory, absolute. Default `/tmp/ms110d-cal` |
 | `MS110D_CAL_PROFILE` | `full` (default) or `smoke`: two channels, WN 3 and 6 at Short and Long, two points each, one cycle |
 | `MS110D_MASK_WORKERS` | Parallel jobs. Default: one per core |

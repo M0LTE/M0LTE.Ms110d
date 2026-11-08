@@ -182,6 +182,96 @@ public class Ms110dCalibrationSweep(ITestOutputHelper output)
                (missing.Count > 0 ? $"; missing {string.Join(" ", missing.Take(20))}{(missing.Count > 20 ? " ..." : "")}" : ""));
     }
 
+    /// <summary>
+    /// Checks the per-rung windows before the full run: for every channel and rung of the profile,
+    /// a few bursts of that rung alone at the bottom and at the top of its window
+    /// (<see cref="CalibrationPlan.Window"/>). The bottom should show near-total block errors and
+    /// the top almost no D_PDU errors; a window that does not bracket the waterfall is listed as
+    /// WIDEN. Writes <c>pilot.tsv</c> under <c>MS110D_CAL_OUT</c>. <c>MS110D_CAL_PILOT_DRY=1</c>
+    /// prints the size only.
+    /// </summary>
+    [Fact]
+    public void Pilot()
+    {
+        Assert.SkipWhen(Environment.GetEnvironmentVariable("MS110D_CAL_PILOT") != "1",
+            "set MS110D_CAL_PILOT=1 to check the calibration windows with a short pilot");
+        var plan = new CalibrationPlan(CalibrationSettings.FromEnvironment());
+        var jobs = new List<(CalJob Job, Rung Rung, string Edge)>();
+        foreach (CalChannel c in plan.Settings.Channels)
+        {
+            int channelIndex = Array.FindIndex(CalibrationPlan.AllChannels, x => x.Name == c.Name);
+            foreach (Rung r in plan.Rungs)
+            {
+                (int lo, int hi) = CalibrationPlan.Window(r, c);
+                RungBurst b = plan.Bursts[r];
+                foreach ((string edge, int snr) in new[] { ("bottom", lo), ("top", hi) })
+                {
+                    // Bottom: enough blocks to see the rate is near total. Top: enough to see errors
+                    // have (nearly) gone, and on fading two minutes of channel.
+                    int minBlocks = edge == "top" && c.Fading ? 60 : 24;
+                    double minSeconds = edge == "top" && c.Fading ? 120 : 0;
+                    int maxBursts = edge == "top" && c.Fading ? 6 : 3;
+                    int n = Math.Max((int)Math.Ceiling(minBlocks / (double)b.Blocks), (int)Math.Ceiling(minSeconds / b.Seconds));
+                    n = Math.Clamp(n, 1, maxBursts);
+                    var cycle = Enumerable.Repeat(r, n).ToList();
+                    var point = new CalPoint(c, snr, [r], cycle, 1);
+                    double seconds = cycle.Sum(x => plan.Bursts[x].Seconds + (plan.Settings.GapMs / 1000.0))
+                                     + CalibrationRunner.LeadInSeconds + CalibrationRunner.TailSeconds;
+                    int seed = CalibrationPlan.Mix(channelIndex, snr, r.Wn, (int)r.Il, 0x5107, plan.Settings.SeedOffset);
+                    jobs.Add((new CalJob(point, edge == "bottom" ? 0 : 1, seed, 0, seconds), r, edge));
+                }
+            }
+        }
+
+        double hours = jobs.Sum(j => j.Job.SignalSeconds) / 3600;
+        Report(string.Create(CultureInfo.InvariantCulture, $"[pilot] {jobs.Count} jobs, {hours:F1} signal-hours, {Workers()} workers"));
+        if (Environment.GetEnvironmentVariable("MS110D_CAL_PILOT_DRY") == "1")
+        {
+            return;
+        }
+
+        string root = OutRoot();
+        Directory.CreateDirectory(root);
+        var results = new ConcurrentBag<string>();
+        var clock = Stopwatch.StartNew();
+        int done = 0;
+        Parallel.ForEach(
+            jobs.OrderByDescending(j => j.Job.SignalSeconds).ToList(),
+            new ParallelOptions { MaxDegreeOfParallelism = Workers() },
+            j =>
+            {
+                List<BurstRecord> recs = CalibrationRunner.Run(plan, j.Job);
+                int blocks = recs.Sum(x => x.Blocks), blockErrors = recs.Sum(x => x.BlockErrors);
+                int dpdus = recs.Sum(x => x.Dpdus), dpduErrors = recs.Sum(x => x.DpduErrors);
+                var est = recs.Where(x => x.EstimateTenths is not null).Select(x => x.EstimateTenths!.Value).OrderBy(x => x).ToList();
+                double ber = blocks > 0 ? blockErrors / (double)blocks : 1, fer = dpdus > 0 ? dpduErrors / (double)dpdus : 1;
+                string verdict = j.Edge == "bottom" ? (ber >= 0.9 ? "ok" : "WIDEN") : (fer <= 0.02 ? "ok" : "WIDEN");
+                string line = string.Create(CultureInfo.InvariantCulture,
+                    $"{j.Job.Point.Channel.Name}\t{j.Rung.Name}\t{j.Edge}\t{j.Job.Point.SnrTenths}\t{recs.Count}\t{blocks}\t{blockErrors}\t" +
+                    $"{dpdus}\t{dpduErrors}\t{(est.Count > 0 ? est[est.Count / 2].ToString(CultureInfo.InvariantCulture) : "-")}\t{verdict}");
+                results.Add(line);
+                int k = Interlocked.Increment(ref done);
+                if (k % 20 == 0)
+                {
+                    Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                        $"[pilot] {k}/{jobs.Count} after {clock.Elapsed.TotalMinutes:F1} min"));
+                }
+            });
+
+        var sorted = results.OrderBy(l => l, StringComparer.Ordinal).ToList();
+        File.WriteAllText(Path.Combine(root, "pilot.tsv"),
+            "channel\trung\tedge\tset_snr_tenth\tbursts\tblocks\tblock_errors\tdpdus\tdpdu_errors\test_median_tenth\tverdict\n" +
+            string.Join('\n', sorted) + "\n");
+        foreach (string l in sorted.Where(l => l.EndsWith("WIDEN", StringComparison.Ordinal)))
+        {
+            Report("[pilot] " + l);
+        }
+
+        Report(string.Create(CultureInfo.InvariantCulture,
+            $"[pilot] {sorted.Count(l => l.EndsWith("WIDEN", StringComparison.Ordinal))} of {sorted.Count} edges to widen; " +
+            $"{clock.Elapsed.TotalMinutes:F1} min"));
+    }
+
     // ---------------------------------------------------------------- plan logic (CI)
 
     [Fact]

@@ -106,10 +106,16 @@ internal sealed class CalibrationPlan
     private const int SizingMinBlocks = 300;
     private const double SizingMinSeconds = 20 * 60;
 
-    /// <summary>Ladder offsets every point's schedule pairs: b within this many rungs of a, either
-    /// way. The plan needs b from four below to two above; the symmetric range keeps the pair graph
-    /// balanced, so one Eulerian circuit holds every pair exactly once.</summary>
-    public const int PairReach = 4;
+    /// <summary>Ladder offsets every point's schedule pairs: b within this many places of a in the
+    /// prior order of all 36 rungs, either way. The plan needs b from a few below to two above on the
+    /// final ladder, which keeps only the rungs no faster rung beats, so its neighbours can be several
+    /// prior places apart (WN 13 Long to WN 6 Long is 8). Eight covers every neighbour pair of an
+    /// all-Long or mixed ladder at the same signal-hours as four (each pair just follows fewer times
+    /// per point). The symmetric range keeps the pair graph balanced, so one Eulerian circuit holds
+    /// every pair exactly once. Pairs further apart come from own.tsv by set SNR: the fading
+    /// decorrelates in well under a second (1 Hz and 0.5 Hz Doppler spread), so across the 6 s gap a
+    /// burst's channel is independent of the one before.</summary>
+    public const int PairReach = 8;
 
     /// <summary>Table D-LXIV 3 kHz rows, as Ms110dMaskTests: WN to (AWGN, Poor) SNR dB.</summary>
     public static readonly IReadOnlyDictionary<int, (double Awgn, double Poor)> MaskSnr = new Dictionary<int, (double, double)>
