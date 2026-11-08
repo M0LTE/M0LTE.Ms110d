@@ -10,7 +10,7 @@
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="AwesomeAssertions" Version="9.2.0" />
     <!-- The Watterson HF channel and the impulse noise the masks are measured through. -->
-    <PackageVersion Include="M0LTE.HfChannel" Version="0.1.0" />
+    <PackageVersion Include="M0LTE.HfChannel" Version="0.2.0" />
 
     <!-- Dependencies -->
     <PackageVersion Include="M0LTE.Dsp" Version="0.2.2" />
