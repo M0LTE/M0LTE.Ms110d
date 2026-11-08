@@ -99,4 +99,11 @@ Measured speed and size: see "Timing" below. Memory is small (about 20 MB a work
 
 ## Timing
 
-TIMING_PLACEHOLDER
+Measured on 2026-11-08 at commit ae8ab35 (0.6.1) on a shared 16-core box that was oversubscribed by other work at the time (load about 20), 6 workers:
+
+| Run | Signal | Speed |
+|---|---|---|
+| Smoke profile, 4 jobs | 0.3 h | 0.10 (AWGN) to 0.27 (Poor-SSB) core-seconds per signal-second |
+| Full rung mix, AWGN and Poor, 3 middle points each, one cycle | 4 jobs, 6.3 h | 0.25 core-seconds per signal-second |
+
+The full profile is 1712 jobs and about 1590 signal-hours (`MS110D_CAL_PLAN=1` prints it), so about 400 core-hours at 0.25: about 2 to 2.5 hours on 192 cores, the longest single job (2.3 signal-hours, started first) about 35 minutes. Allow 3 hours. That is more signal than the calibration plan's 850 signal-hours (the 6 s gaps, and the 56 s WN 1 bursts that one full D_PDU needs) but fewer core-hours than its 600, because the demodulator runs faster than the 0.35 to 0.7 the plan assumed.
