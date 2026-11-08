@@ -233,8 +233,8 @@ public sealed class Ms110dDemodulator
     private double _snrBurstS, _snrBurstN;
     private int _snrBurstProbes, _snrBurstBad;
     // The current run of consecutive bad probes, held back from the burst totals: folded in
-    // when a good probe follows (or the burst ends any other way), dropped on SignalLost,
-    // whose trailing run is noise after the signal stopped (section 2.2).
+    // when a good probe follows (or the burst ends any other way), dropped on SignalLost
+    // and NewPreamble, whose trailing run is noise after the signal stopped (section 2.2).
     private double _snrTailS, _snrTailN;
     private int _snrTailProbes;
     // C_mod in dB for the locked waveform: average frame power over the unit-power probe.
@@ -5395,7 +5395,7 @@ public sealed class Ms110dDemodulator
         bool trackFromEarliest = _trackFromEarliest;
         long startSample = lockInfo is null ? 0 : _burstStartSample;
         long lastFrameEnd = _lastBlockEndSample;
-        if (reason != Ms110dBurstEndReason.SignalLost)
+        if (reason != Ms110dBurstEndReason.SignalLost && reason != Ms110dBurstEndReason.NewPreamble)
         {
             FoldSnrTail();
         }

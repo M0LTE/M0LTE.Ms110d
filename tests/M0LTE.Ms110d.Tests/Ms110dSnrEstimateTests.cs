@@ -280,6 +280,56 @@ public class Ms110dSnrEstimateTests(ITestOutputHelper output)
         s.ProbesUsed.Should().BeInRange(signalProbes - 1, signalProbes + 2);
     }
 
+    [Fact]
+    public void NewPreambleBurstLeavesOutItsTrailingBadRun()
+    {
+        // Burst A is cut after about two seconds of data; 1.5 s of silence (noise only) follows,
+        // then burst B. The receiver releases A on B's preamble (NewPreamble) after reading
+        // noise-only probes, which must stay out of A's figure as they do on SignalLost.
+        const double snrDb = 15.0;
+        var settings = new Ms110dTxSettings
+        {
+            WaveformNumber = 6,
+            Interleaver = Ms110dInterleaverKind.Short,
+            ConstraintLength = 7,
+            PreambleSuperframes = 3,
+        };
+        var tx = new Ms110dModulator(settings);
+        Ms110dInterleaverParams ilParams = Ms110dInterleaverParams.Get3k(6, Ms110dInterleaverKind.Short);
+        var random = new Random(4700);
+        float[] a = tx.Modulate(RandomBits((12 * ilParams.InputBits) - 32, random));
+        float[] b = tx.Modulate(RandomBits((4 * ilParams.InputBits) - 32, random));
+        int stopAt = (3 * 18 * 32 * 4) + (2 * 9600);
+        Array.Clear(a, stopAt, a.Length - stopAt);
+        var audio = new float[stopAt + (9600 * 3 / 2) + b.Length];
+        Array.Copy(a, audio, stopAt);
+        Array.Copy(b, 0, audio, stopAt + (9600 * 3 / 2), b.Length);
+
+        float[] rx = new WattersonChannel(9600, 4701, []).Apply(
+            audio, snrDb, leadInSamples: 2400, leadOutSamples: 9600 * 8);
+        var demod = new Ms110dDemodulator(new Ms110dDemodOptions());
+        var bursts = new List<Ms110dBurst>();
+        var blocks = new List<BlockSample>();
+        demod.BlockDecoded += x => { if (bursts.Count == 0) { blocks.Add(new BlockSample(x.SnrDb, x.ProbesUsed, x.ProbesBad, true)); } };
+        demod.BurstCompleted += x => bursts.Add(x);
+        demod.Process(rx);
+
+        Ms110dBurst first = bursts[0];
+        first.Reason.Should().Be(Ms110dBurstEndReason.NewPreamble);
+        int blockBad = blocks.Sum(x => x.ProbesBad);
+        output.WriteLine(
+            $"burst {first.SnrDb:F2} dB over {first.ProbesUsed} probes ({first.ProbesBad} bad); blocks " +
+            $"{string.Join(" ", blocks.Select(x => $"{x.SnrDb:F1}/{x.ProbesBad}"))}");
+        // The noise-only blocks carry bad probes, the burst figure reads what the signal blocks read
+        // and its probe count stops at the end of the signal.
+        blockBad.Should().BeGreaterThan(0);
+        double signalBlocks = blocks.Where(x => x.ProbesBad == 0).Average(x => x.SnrDb!.Value);
+        first.SnrDb.Should().NotBeNull();
+        first.SnrDb!.Value.Should().BeApproximately(signalBlocks, 0.5);
+        int signalProbes = (int)Math.Ceiling(2.0 * 2400 / 288);
+        first.ProbesUsed.Should().BeInRange(signalProbes - 1, signalProbes + 2);
+    }
+
     // ---------------------------------------------------------------- section 2.5 sweep
 
     private static int Workers()
