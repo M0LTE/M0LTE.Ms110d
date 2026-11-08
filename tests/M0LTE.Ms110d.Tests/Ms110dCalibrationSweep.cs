@@ -328,8 +328,8 @@ public class Ms110dCalibrationSweep(ITestOutputHelper output)
             {
                 foreach (Rung b in p.Rungs)
                 {
-                    int d = ladderIndex[b] - ladderIndex[a];
-                    if (d is >= -4 and <= 2 && a != b)
+                    int d = Math.Abs(ladderIndex[b] - ladderIndex[a]);
+                    if (d <= CalibrationPlan.PairReach && a != b)
                     {
                         pairs.GetValueOrDefault((a, b)).Should().Be(1, $"{p.Channel.Name} {p.SnrTenths}: {a.Name} then {b.Name}");
                     }

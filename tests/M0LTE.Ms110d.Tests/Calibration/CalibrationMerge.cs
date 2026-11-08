@@ -124,8 +124,8 @@ internal static class CalibrationMerge
             ["pairs_are"] = "every (a, b) with b within pair_reach places of a in ladder_prior, a itself included, both members of the point; each once per cycle (an Eulerian circuit), every rung the same number of bursts per cycle. Pairs further apart: from own.tsv by set SNR (the fading decorrelates in well under a second, so across the gap a burst's channel is independent of the one before; next.tsv carries the set SNR so near pairs can check this)",
             ["tables"] = new JsonObject
             {
-                ["own.tsv"] = "per channel, rung, set SNR and estimate bin of the burst itself: bursts, blocks, block errors, D_PDUs, D_PDU errors, and clean bursts (no D_PDU error)",
-                ["next.tsv"] = "per channel, rung a, rung b, set SNR, gap and estimate bin on a: pairs (a burst on b straight after one on a), then the burst on b's D_PDUs, D_PDU errors, blocks, block errors and clean bursts. Sum over set SNR for the plan's columns",
+                ["own.tsv"] = "per channel, rung, set SNR and estimate bin of the burst itself: bursts, blocks, block errors, D_PDUs, D_PDU errors, clean bursts (no D_PDU error) and half-failed bursts (D_PDU errors x 2 > D_PDUs, the corpus-format 6.2 halving test)",
+                ["next.tsv"] = "per channel, rung a, rung b, set SNR, gap and estimate bin on a: pairs (a burst on b straight after one on a), then the burst on b's D_PDUs, D_PDU errors, blocks, block errors, clean bursts and half-failed bursts. Sum over set SNR for the plan's columns",
                 ["no_estimate_bin"] = "-",
             },
             ["rungs"] = new JsonArray(plan.Rungs.Select(r =>
@@ -210,7 +210,7 @@ internal static class CalibrationMerge
                 var key = (channelOrder[r.Channel], rungOrder[r.Rung.Name], r.SnrTenths, bin);
                 if (!own.TryGetValue(key, out long[]? a))
                 {
-                    own[key] = a = new long[6];
+                    own[key] = a = new long[7];
                 }
 
                 a[0]++;
@@ -219,6 +219,7 @@ internal static class CalibrationMerge
                 a[3] += r.Dpdus;
                 a[4] += r.DpduErrors;
                 a[5] += r.DpduErrors == 0 ? 1 : 0;
+                a[6] += (long)r.DpduErrors * 2 > r.Dpdus ? 1 : 0;
 
                 if (k > 0 && records[k - 1].Index == r.Index - 1)
                 {
@@ -227,7 +228,7 @@ internal static class CalibrationMerge
                     var nkey = (channelOrder[r.Channel], rungOrder[prev.Rung.Name], rungOrder[r.Rung.Name], r.SnrTenths, r.GapMs, prevBin);
                     if (!next.TryGetValue(nkey, out long[]? b))
                     {
-                        next[nkey] = b = new long[6];
+                        next[nkey] = b = new long[7];
                     }
 
                     b[0]++;
@@ -236,6 +237,7 @@ internal static class CalibrationMerge
                     b[3] += r.Blocks;
                     b[4] += r.BlockErrors;
                     b[5] += r.DpduErrors == 0 ? 1 : 0;
+                    b[6] += (long)r.DpduErrors * 2 > r.Dpdus ? 1 : 0;
                 }
 
                 if (Fnv(r.Job, r.Index) % 100 == 0)
@@ -252,20 +254,20 @@ internal static class CalibrationMerge
         string dir = Path.Combine(root, ResultName());
         Directory.CreateDirectory(dir);
 
-        var sb = new StringBuilder("channel\trung\tset_snr_tenth\test_bin_tenth\tbursts\tblocks\tblock_errors\tdpdus\tdpdu_errors\tclean_bursts\n");
+        var sb = new StringBuilder("channel\trung\tset_snr_tenth\test_bin_tenth\tbursts\tblocks\tblock_errors\tdpdus\tdpdu_errors\tclean_bursts\thalf_failed_bursts\n");
         foreach (((int c, int r, int snr, int bin), long[] v) in own)
         {
             sb.Append(CultureInfo.InvariantCulture,
-                $"{channelName(c)}\t{rungName(r)}\t{snr}\t{binText(bin)}\t{v[0]}\t{v[1]}\t{v[2]}\t{v[3]}\t{v[4]}\t{v[5]}\n");
+                $"{channelName(c)}\t{rungName(r)}\t{snr}\t{binText(bin)}\t{v[0]}\t{v[1]}\t{v[2]}\t{v[3]}\t{v[4]}\t{v[5]}\t{v[6]}\n");
         }
 
         File.WriteAllText(Path.Combine(dir, "own.tsv"), sb.ToString());
 
-        sb = new StringBuilder("channel\trung_a\trung_b\tset_snr_tenth\tgap_ms\test_bin_a_tenth\tpairs\tdpdus\tdpdu_errors\tblocks\tblock_errors\tclean_bursts\n");
+        sb = new StringBuilder("channel\trung_a\trung_b\tset_snr_tenth\tgap_ms\test_bin_a_tenth\tpairs\tdpdus\tdpdu_errors\tblocks\tblock_errors\tclean_bursts\thalf_failed_bursts\n");
         foreach (((int c, int ra, int rb, int snr, int gap, int bin), long[] v) in next)
         {
             sb.Append(CultureInfo.InvariantCulture,
-                $"{channelName(c)}\t{rungName(ra)}\t{rungName(rb)}\t{snr}\t{gap}\t{binText(bin)}\t{v[0]}\t{v[1]}\t{v[2]}\t{v[3]}\t{v[4]}\t{v[5]}\n");
+                $"{channelName(c)}\t{rungName(ra)}\t{rungName(rb)}\t{snr}\t{gap}\t{binText(bin)}\t{v[0]}\t{v[1]}\t{v[2]}\t{v[3]}\t{v[4]}\t{v[5]}\t{v[6]}\n");
         }
 
         File.WriteAllText(Path.Combine(dir, "next.tsv"), sb.ToString());

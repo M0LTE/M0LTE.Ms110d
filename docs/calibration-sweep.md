@@ -22,8 +22,8 @@ Under `MS110D_CAL_OUT` (an absolute path):
 | `plan.json` | Everything that fixes the results. A resumed run or a shard refuses to run against a different plan | No (it is inside `meta.json`) |
 | `raw/<job>.tsv` | One line per burst sent. Written whole when the job finishes, so a killed job just runs again | No, unless asked |
 | `progress.log` | One line per finished job, with the running speed and time to go | No |
-| `ms110d-cs-<version>/own.tsv` | channel, rung, set SNR, estimate bin (5 tenths), bursts, blocks, block errors, D_PDUs, D_PDU errors, clean bursts (no D_PDU error) | Yes |
-| `ms110d-cs-<version>/next.tsv` | channel, rung a, rung b, set SNR, gap, bin of the estimate on a, then pairs, D_PDUs, D_PDU errors, blocks, block errors and clean bursts of the burst on b. The plan's columns are these summed over set SNR | Yes |
+| `ms110d-cs-<version>/own.tsv` | channel, rung, set SNR, estimate bin (5 tenths), bursts, blocks, block errors, D_PDUs, D_PDU errors, clean bursts (no D_PDU error), half-failed bursts (D_PDU errors x 2 > D_PDUs, as the receiver's MAX-SEGMENT halving test in s5066-conformance corpus-format 6.2) | Yes |
+| `ms110d-cs-<version>/next.tsv` | channel, rung a, rung b, set SNR, gap, bin of the estimate on a, then pairs, D_PDUs, D_PDU errors, blocks, block errors, clean bursts and half-failed bursts of the burst on b. The plan's columns are these summed over set SNR | Yes |
 | `ms110d-cs-<version>/meta.json` | Modem implementation, version and commit; HfChannel version; SSB edges; seeds; burst length and D_PDU layout per rung; every point's schedule; the grid; whether every job merged | Yes |
 | `ms110d-cs-<version>/audit-sample.tsv` | 1% of the raw lines, chosen by hash | Yes |
 
@@ -40,7 +40,7 @@ The directory name says which modem the numbers belong to (`ms110d-cs-0.6.1` is 
 | `MS110D_CAL_OUT` | Output directory, absolute. Default `/tmp/ms110d-cal` |
 | `MS110D_CAL_PROFILE` | `full` (default) or `smoke`: two channels, WN 3 and 6 at Short and Long, two points each, one cycle |
 | `MS110D_MASK_WORKERS` | Parallel jobs. Default: one per core |
-| `MS110D_CAL_SHARD` | `i/n` to run every n-th job from i, for several machines into separate directories; merge from one directory holding all the `raw/` files |
+| `MS110D_CAL_SHARD` | `i/n` to run every n-th job from i, for several machines into separate directories; merge from one directory holding all the `raw/` files and one shard's `plan.json` (they are identical) |
 | `MS110D_CAL_CHANNELS`, `MS110D_CAL_WN`, `MS110D_CAL_IL`, `MS110D_CAL_POINTS` | Narrow a run (comma lists; points keeps the middle n of each channel's grid) |
 | `MS110D_CAL_MIN_BLOCKS`, `MS110D_CAL_MIN_MINUTES`, `MS110D_CAL_MAX_CYCLES` | The per-rung minimums (300 blocks, 20 fading minutes) and a cap on cycles per point |
 | `MS110D_CAL_GAP_MS` | Gap between bursts, default 6000 |

@@ -45,7 +45,9 @@ internal sealed record BurstRecord(
 /// </summary>
 internal static class CalibrationRunner
 {
-    public const double LeadInSeconds = 1;
+    /// <summary>Noise before the first burst: one default gap, so the first burst of a job meets a
+    /// demodulator with the same quiet history as every later one.</summary>
+    public const double LeadInSeconds = 6;
 
     /// <summary>Noise after the last burst, so a burst still decoding completes.</summary>
     public const double TailSeconds = 10;
