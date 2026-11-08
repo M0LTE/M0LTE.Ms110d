@@ -116,7 +116,7 @@ internal static class CalibrationMerge
                 ["min_minutes_per_rung_and_fading_point"] = s.MinMinutesFading,
                 ["max_cycles"] = s.MaxCycles,
                 ["points_per_channel_limit"] = s.PointsPerChannel,
-                ["windows"] = "per rung and channel, CalibrationPlan.Window: AWGN from the D-LXIV AWGN SNR (+1 dB Ultra Short) -4.5 to +3 dB; Poor from the Poor prior -6 to +4.5 dB, Moderate 1.5 dB lower; SSB +1.5 dB at the top; each point adds the ladder neighbours (two each way) of the rungs whose window covers it",
+                ["windows"] = "per rung and channel, CalibrationPlan.Window: AWGN from the D-LXIV AWGN SNR (+1 dB Ultra Short) -6 to +3 dB; Poor from the Poor prior -7.5 to +7.5 dB, Moderate 1.5 dB lower; SSB +1.5 dB at the top; each point adds the ladder neighbours (two each way) of the rungs whose window covers it",
             },
             ["ladder_prior"] = new JsonArray(plan.Ladder.Select(r => (JsonNode)r.Name).ToArray()),
             ["ladder_prior_is"] = "the D-LXIV Poor SNR shifted by interleaver (Ultra Short +3, Short 0, Medium -1.5, Long -3 dB), then data rate; orders the pairs and neighbours only",

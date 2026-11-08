@@ -185,8 +185,8 @@ public class Ms110dCalibrationSweep(ITestOutputHelper output)
     /// <summary>
     /// Checks the per-rung windows before the full run: for every channel and rung of the profile,
     /// a few bursts of that rung alone at the bottom and at the top of its window
-    /// (<see cref="CalibrationPlan.Window"/>). The bottom should show near-total block errors and
-    /// the top almost no D_PDU errors; a window that does not bracket the waterfall is listed as
+    /// (<see cref="CalibrationPlan.Window"/>). The bottom should show near-total D_PDU errors (at
+    /// least 90%) and the top almost none (at most 2%); a window that does not bracket the waterfall is listed as
     /// WIDEN. Writes <c>pilot.tsv</c> under <c>MS110D_CAL_OUT</c>. <c>MS110D_CAL_PILOT_DRY=1</c>
     /// prints the size only.
     /// </summary>
@@ -236,7 +236,7 @@ public class Ms110dCalibrationSweep(ITestOutputHelper output)
         var clock = Stopwatch.StartNew();
         int done = 0;
         Parallel.ForEach(
-            jobs.OrderByDescending(j => j.Job.SignalSeconds).ToList(),
+            Partitioner.Create(jobs.OrderByDescending(j => j.Job.SignalSeconds).ToList(), EnumerablePartitionerOptions.NoBuffering),
             new ParallelOptions { MaxDegreeOfParallelism = Workers() },
             j =>
             {
@@ -244,8 +244,8 @@ public class Ms110dCalibrationSweep(ITestOutputHelper output)
                 int blocks = recs.Sum(x => x.Blocks), blockErrors = recs.Sum(x => x.BlockErrors);
                 int dpdus = recs.Sum(x => x.Dpdus), dpduErrors = recs.Sum(x => x.DpduErrors);
                 var est = recs.Where(x => x.EstimateTenths is not null).Select(x => x.EstimateTenths!.Value).OrderBy(x => x).ToList();
-                double ber = blocks > 0 ? blockErrors / (double)blocks : 1, fer = dpdus > 0 ? dpduErrors / (double)dpdus : 1;
-                string verdict = j.Edge == "bottom" ? (ber >= 0.9 ? "ok" : "WIDEN") : (fer <= 0.02 ? "ok" : "WIDEN");
+                double fer = dpdus > 0 ? dpduErrors / (double)dpdus : 1;
+                string verdict = j.Edge == "bottom" ? (fer >= 0.9 ? "ok" : "WIDEN") : (fer <= 0.02 ? "ok" : "WIDEN");
                 string line = string.Create(CultureInfo.InvariantCulture,
                     $"{j.Job.Point.Channel.Name}\t{j.Rung.Name}\t{j.Edge}\t{j.Job.Point.SnrTenths}\t{recs.Count}\t{blocks}\t{blockErrors}\t" +
                     $"{dpdus}\t{dpduErrors}\t{(est.Count > 0 ? est[est.Count / 2].ToString(CultureInfo.InvariantCulture) : "-")}\t{verdict}");

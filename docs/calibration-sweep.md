@@ -7,7 +7,7 @@ The code is `tests/M0LTE.Ms110d.Tests/Ms110dCalibrationSweep.cs` and `tests/M0LT
 ## What it measures
 
 - **Channels**: AWGN, Poor, Moderate, AWGN with the SSB band-pass and Poor with the SSB band-pass (400 to 2600 Hz at -6 dB, on both the sending and the receiving radio).
-- **Grid**: set SNR in 1.5 dB steps. Each rung is measured over a window around its expected error transition (from the D-LXIV figures, see `CalibrationPlan.Window`), plus the points where its two ladder neighbours either side are measured. About 20 to 27 points per channel.
+- **Grid**: set SNR in 1.5 dB steps. Each rung is measured over a window around its expected error transition (from the D-LXIV figures, see `CalibrationPlan.Window`: AWGN 6 dB below to 3 dB above, fading 7.5 dB either side, as widened by the window check below), plus the points where its two ladder neighbours either side are measured. About 21 to 30 points per channel.
 - **SNR reference**: on air. The set SNR is the signal power at the channel input, after the transmit passband where there is one, over the noise in 3 kHz added at the receiving antenna (before the receive passband). Every burst is scaled to the same on-air power, so each rung meets the set SNR (WN 8's QAM would otherwise sit 0.8 dB lower).
 - **Schedule**: each point sends a cycle of bursts with a 6 s gap between them (the 5066 turnaround until P7-8 measures it). The cycle is an Eulerian circuit of the pairs (a, b) with b up to eight places either side of a in the prior order of all 36 rungs, so every pair follows exactly once a cycle and every rung is sent the same number of times. Eight, not the plan's two above and a few below, because the final ladder drops the rungs a faster rung beats, so its neighbours can be several prior places apart (WN 13 Long to WN 6 Long is eight). Pairs further apart come from `own.tsv` by set SNR: the fading decorrelates in well under a second (1 Hz and 0.5 Hz Doppler spread), so across the 6 s gap one burst's channel is independent of the one before, and `next.tsv` carries the set SNR so the near pairs can check that. A point runs as many cycles as its slowest rung needs for at least 300 blocks and, on fading, at least 20 minutes of signal. Each cycle is one job with its own continuous channel realisation and one demodulator running throughout.
 - **Bursts**: a fixed number of blocks per rung (about 12 s, longer for rungs with long blocks, and at least one full D_PDU, so about 56 s on WN 1 and 29 s on WN 2), listed in `meta.json`.
@@ -97,6 +97,24 @@ Measured speed and size: see "Timing" below. Memory is small (about 20 MB a work
    ```
 
    Copy back only that tarball (a few hundred kB; egress is billed). Leave `raw/` on the instance until the tables have been checked, then delete it with the instance.
+
+## Window check (pilot)
+
+`MS110D_CAL_PILOT=1` sends a few bursts of each rung alone at the bottom and the top of its window on every channel (360 short jobs, about 10 signal-hours) and marks an edge WIDEN when the bottom still delivers more than 10% of its D_PDUs or the top loses more than 2%. Run it after any change to the windows or the modem:
+
+```sh
+MS110D_CAL_PILOT=1 MS110D_CAL_OUT=/tmp/cal-pilot MS110D_MASK_WORKERS=6 \
+  dotnet run -c Release --project tests/M0LTE.Ms110d.Tests -- -method M0LTE.Ms110d.Tests.Ms110dCalibrationSweep.Pilot
+```
+
+The review pilot of 2026-11-08 (0.6.1, the earlier windows of 4.5 dB below to 3 dB above on AWGN and 6 dB below to 4.5 dB above on fading) found:
+
+- Bottoms: 35 of 180 still delivered D_PDUs (most by one step, the worst WN 7 and 8 Ultra Short on fading, 40 to 60% lost). All bottoms moved down 1.5 dB.
+- AWGN and AWGN-SSB tops: all clean.
+- Fading tops of Long and Medium rungs: WN 4 Long on Poor lost 17% at 12 dB, WN 6 Long on Moderate 4%, and on Poor-SSB WN 2 and 3 Long 17%, WN 6 Medium 19%, WN 7 Medium 12%. Fading tops moved up 3 dB.
+- Short and Ultra Short on fading have error floors that a few dB more do not clear (WN 1 and 2 Ultra Short lose every D_PDU 7.5 dB above their prior; WN 6 Ultra Short on Poor 47% at 22.5 dB). The sweep records them as not meeting the latency criterion inside the window, which is all the ladder needs: the Long rung of the same waveform meets it lower.
+- WN 8 on Poor-SSB loses 80 to 100% of its D_PDUs at every interleaver even at 27 to 33 dB, and its estimate reads about 3 dB: the band-pass plus fading defeats it, a floor, not a window problem. WN 7 Short and Ultra Short on Poor-SSB lose about 30%.
+- On Poor and Poor-SSB the estimate sits near 3 to 6 dB at the window tops whatever the set SNR, as [snr-calibration.md](snr-calibration.md) found; fading thresholds will be compressed into a few dB of estimate.
 
 ## Timing
 

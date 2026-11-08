@@ -192,22 +192,25 @@ internal sealed class CalibrationPlan
     /// <summary>The set SNR window (dB) a rung is measured over on a channel: from where its block
     /// errors are expected near 100% to where they should vanish, with margin, on the 1.5 dB grid.
     /// AWGN: the D-LXIV AWGN figure (no block errors were seen at or above it in the 0.6.0 sweep)
-    /// from 4.5 dB below to 3 dB above. Fading: the Poor prior from 6 dB below to 4.5 dB above,
-    /// Moderate 1.5 dB easier. The SSB band-pass adds 1.5 dB at the top.</summary>
+    /// from 6 dB below to 3 dB above. Fading: the Poor prior from 7.5 dB below to 7.5 dB above,
+    /// Moderate 1.5 dB easier. The SSB band-pass adds 1.5 dB at the top. Widened after the review
+    /// pilot of 2026-11-08 (docs/calibration-sweep.md, "Window check"): at the old edges a third of
+    /// the bottoms still delivered D_PDUs and the fading tops of several Long and Medium rungs still
+    /// lost 4 to 19% of them.</summary>
     public static (int LoTenths, int HiTenths) Window(Rung r, CalChannel c)
     {
         double lo, hi;
         if (c.Prior == "awgn")
         {
             double t = MaskSnr[r.Wn].Awgn + (r.Il == Ms110dInterleaverKind.UltraShort ? 1 : 0);
-            lo = t - 4.5;
+            lo = t - 6;
             hi = t + 3;
         }
         else
         {
             double t = PriorPoorDb(r) - (c.Prior == "moderate" ? 1.5 : 0);
-            lo = t - 6;
-            hi = t + 4.5;
+            lo = t - 7.5;
+            hi = t + 7.5;
         }
 
         if (c.Ssb)
