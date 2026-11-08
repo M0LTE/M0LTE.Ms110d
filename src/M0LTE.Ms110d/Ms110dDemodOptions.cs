@@ -107,8 +107,8 @@ public sealed record Ms110dBurst(
 
     /// <summary>Signal-to-noise ratio in dB over every mini-probe of the burst, on the same
     /// definition as <see cref="Ms110dRxBlock.SnrDb"/>. For a
-    /// <see cref="Ms110dBurstEndReason.SignalLost"/> exit the trailing run of bad probes that
-    /// triggered it (noise after the signal stopped) is left out. Null when there was no probe
+    /// <see cref="Ms110dBurstEndReason.SignalLost"/> or <see cref="Ms110dBurstEndReason.NewPreamble"/>
+    /// exit the trailing run of bad probes (noise after the signal stopped) is left out. Null when there was no probe
     /// to measure (WN 0, a burst that ended before its first probe) and in genie mode.</summary>
     public double? SnrDb { get; init; }
 
