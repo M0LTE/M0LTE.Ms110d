@@ -4,6 +4,8 @@ What the SNR estimator (`docs/design-5066-support.md` section 2) reads against t
 
 0.6.1 note: a burst that ends `NewPreamble` now leaves its trailing run of noise-only probes out of the burst figure, as `SignalLost` does ([M0LTE/M0LTE.S5066#36](https://github.com/M0LTE/M0LTE.S5066/issues/36)). The sweeps below end bursts on `Eom`, so the figures and offsets here are unchanged. The public API is unchanged.
 
+The 5066 rate-ladder calibration, which measures block and D_PDU errors against this estimate on every rung, is in [calibration-sweep.md](calibration-sweep.md).
+
 ## How it was measured
 
 `Ms110dSnrEstimateTests` runs bursts through `M0LTE.HfChannel.WattersonChannel.Apply` at a set SNR in 3 kHz, with a fresh demodulator per burst and M = 3 preamble super-frames (the library default). Every WN in 1 to 8 and 13, Short and Long interleaver.
